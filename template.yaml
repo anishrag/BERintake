@@ -32,6 +32,24 @@ Parameters:
     Type: String
     Default: ""
     Description: For testing — redirect ALL outgoing emails to this address. Leave blank in production.
+  GoogleClientId:
+    Type: String
+    Default: ""
+    Description: Google OAuth client id (from the website's credentials.json).
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Google OAuth client secret.
+  GoogleRefreshToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Google OAuth refresh token (from the website's token.json).
+  GoogleCalendarId:
+    Type: String
+    Default: ""
+    Description: Calendar id holding the "Slot Available" events.
 
 Globals:
   HttpApi:
@@ -62,6 +80,10 @@ Globals:
         GOOGLE_MAPS_API_KEY: !Ref GoogleMapsApiKey
         QUOTE_FROM_EMAIL: !Ref QuoteFromEmail
         TEST_EMAIL_OVERRIDE: !Ref TestEmailOverride
+        GOOGLE_CLIENT_ID: !Ref GoogleClientId
+        GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
+        GOOGLE_REFRESH_TOKEN: !Ref GoogleRefreshToken
+        GOOGLE_CALENDAR_ID: !Ref GoogleCalendarId
 
 Resources:
   JobsTable:
@@ -165,6 +187,38 @@ Resources:
         Post:
           Type: HttpApi
           Properties: { Path: "/jobs/{token}/email-quote", Method: POST }
+
+  SlotsFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/slots.ts]
+    Properties:
+      Handler: src/handlers/slots.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: "/jobs/{token}/slots", Method: GET }
+
+  BookFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/book.ts]
+    Properties:
+      Handler: src/handlers/book.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/jobs/{token}/book", Method: POST }
 
   TelegramWebhookFn:
     Type: AWS::Serverless::Function

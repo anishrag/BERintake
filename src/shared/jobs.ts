@@ -115,6 +115,25 @@ export async function setQuotePricing(
   );
 }
 
+export async function setBooking(
+  jobId: string,
+  booking: Record<string, unknown>,
+): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "SET booking = :b, #s = :s, updatedAt = :u",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: {
+        ":b": booking,
+        ":s": "booked",
+        ":u": new Date().toISOString(),
+      },
+    }),
+  );
+}
+
 export function clientLink(token: string): string {
   const base = process.env.PUBLIC_SITE_URL ?? "https://cannygreen.ie";
   return `${base}/quote/${token}`;
