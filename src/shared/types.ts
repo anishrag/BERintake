@@ -39,6 +39,9 @@ export interface Job {
   partnerName?: string; // set when source === "partner" (referral tracking)
   note?: string;
   client: ClientDetails;
+  // Computed once from the eircode (geocode → zone), cached for the quote page.
+  serviceArea?: string;
+  quotePrices?: Record<string, number>; // house type -> price for this zone
   quote?: Record<string, unknown>;
   booking?: Record<string, unknown>;
   payment?: Record<string, unknown>;

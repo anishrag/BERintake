@@ -76,6 +76,45 @@ export async function setJobStatus(
   );
 }
 
+export async function setQuote(
+  jobId: string,
+  quote: Record<string, unknown>,
+): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "SET quote = :q, #s = :s, updatedAt = :u",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: {
+        ":q": quote,
+        ":s": "quoted",
+        ":u": new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function setQuotePricing(
+  jobId: string,
+  serviceArea: string,
+  quotePrices: Record<string, number>,
+): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression:
+        "SET serviceArea = :a, quotePrices = :p, updatedAt = :u",
+      ExpressionAttributeValues: {
+        ":a": serviceArea,
+        ":p": quotePrices,
+        ":u": new Date().toISOString(),
+      },
+    }),
+  );
+}
+
 export function clientLink(token: string): string {
   const base = process.env.PUBLIC_SITE_URL ?? "https://cannygreen.ie";
   return `${base}/quote/${token}`;
