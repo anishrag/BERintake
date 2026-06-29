@@ -199,6 +199,10 @@ Resources:
       Handler: src/handlers/createJob.handler
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - Statement:
+            - Effect: Allow
+              Action: [ses:SendEmail, ses:SendRawEmail]
+              Resource: "*"
       Events:
         Post:
           Type: HttpApi
@@ -451,6 +455,10 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref BotStateTable }
+        - Statement:
+            - Effect: Allow
+              Action: [ses:SendEmail, ses:SendRawEmail]
+              Resource: "*"
       Events:
         Post:
           Type: HttpApi

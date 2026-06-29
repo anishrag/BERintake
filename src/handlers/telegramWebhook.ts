@@ -16,6 +16,7 @@ import {
   setState,
 } from "../shared/botState";
 import { clientLink, createJob, getJobById, setJobStatus } from "../shared/jobs";
+import { sendQuoteRequestEmail } from "../shared/notify";
 import {
   allowedChatId,
   tgAnswerCallback,
@@ -130,9 +131,10 @@ async function advance(
         source: "telegram",
         requireReview: false,
       });
+      await sendQuoteRequestEmail(job);
       await tgSend(
         chatId,
-        `✅ Job created for <b>${job.client.name}</b>.\n\nClient quote link:\n${clientLink(job.token)}`,
+        `✅ Job created for <b>${job.client.name}</b> — quote email sent to ${job.client.email}.\n\nClient quote link:\n${clientLink(job.token)}`,
       );
       return;
     }
@@ -152,15 +154,15 @@ async function handleCallback(cb: any): Promise<void> {
 
   if (action === "approve") {
     await setJobStatus(jobId, "quote_sent");
-    await tgAnswerCallback(cb.id, "Quote link sent");
+    await sendQuoteRequestEmail(job);
+    await tgAnswerCallback(cb.id, "Quote email sent");
     if (chatId && messageId) {
       await tgEditText(
         chatId,
         messageId,
-        `✅ Approved — quote link for <b>${job.client.name}</b>:\n${clientLink(job.token)}`,
+        `✅ Approved — quote email sent to <b>${job.client.name}</b> (${job.client.email}).\n${clientLink(job.token)}`,
       );
     }
-    // TODO(Phase 8): email the client the link via SES.
   } else if (action === "discard") {
     await setJobStatus(jobId, "discarded");
     await tgAnswerCallback(cb.id, "Discarded");

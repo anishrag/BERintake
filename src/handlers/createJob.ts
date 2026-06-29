@@ -7,6 +7,7 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { clientLink, createJob } from "../shared/jobs";
+import { sendQuoteRequestEmail } from "../shared/notify";
 import { notifyOwner } from "../shared/telegram";
 import type { JobSource } from "../shared/types";
 
@@ -84,6 +85,8 @@ export const handler = async (
     });
   }
 
+  // Non-review job (web admin) goes straight to quote_sent — email the client.
+  await sendQuoteRequestEmail(job);
   return json(201, {
     jobId: job.jobId,
     status: job.status,
