@@ -68,6 +68,24 @@ Parameters:
     Type: String
     Default: ""
     Description: Optional QuickBooks TaxCode id for invoice lines. Blank = auto-pick a zero/exempt code.
+  SignWellApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: SignWell API key (X-Api-Key).
+  SignWellTemplateId:
+    Type: String
+    Default: ""
+    Description: SignWell template id for the Letter of Engagement.
+  SignWellPlaceholder:
+    Type: String
+    Default: Client
+    Description: The signer placeholder name in the SignWell template.
+  SignWellTestMode:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: SignWell test mode — true while building (no billing, no real emails).
 
 Globals:
   HttpApi:
@@ -109,6 +127,10 @@ Globals:
         QB_ENV: !Ref QbEnv
         QB_AUTH_TABLE: !Ref QbAuthTable
         QB_TAX_CODE_ID: !Ref QbTaxCodeId
+        SIGNWELL_API_KEY: !Ref SignWellApiKey
+        SIGNWELL_TEMPLATE_ID: !Ref SignWellTemplateId
+        SIGNWELL_PLACEHOLDER: !Ref SignWellPlaceholder
+        SIGNWELL_TEST_MODE: !Ref SignWellTestMode
 
 Resources:
   JobsTable:
@@ -304,6 +326,38 @@ Resources:
         Post:
           Type: HttpApi
           Properties: { Path: "/jobs/{token}/book", Method: POST }
+
+  LoeFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/loe.ts]
+    Properties:
+      Handler: src/handlers/loe.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/jobs/{token}/loe", Method: POST }
+
+  SignWellWebhookFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/signwellWebhook.ts]
+    Properties:
+      Handler: src/handlers/signwellWebhook.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: /signwell/webhook, Method: POST }
 
   GenerateInvoiceFn:
     Type: AWS::Serverless::Function

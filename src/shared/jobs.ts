@@ -5,6 +5,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { JOBS_TABLE, ddb } from "./db";
@@ -177,6 +178,44 @@ export async function setInvoice(
       },
     }),
   );
+}
+
+export async function setLoe(
+  jobId: string,
+  loe: { documentId: string; signingUrl?: string; status: string; createdAt: string },
+): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "SET loe = :l, updatedAt = :u",
+      ExpressionAttributeValues: { ":l": loe, ":u": new Date().toISOString() },
+    }),
+  );
+}
+
+export async function setLoeStatus(jobId: string, status: string): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "SET loe.#s = :s, updatedAt = :u",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: { ":s": status, ":u": new Date().toISOString() },
+    }),
+  );
+}
+
+/** Find the job whose LOE document matches `documentId` (used by the webhook). */
+export async function findJobByLoeDocId(documentId: string): Promise<Job | undefined> {
+  const res = await ddb.send(
+    new ScanCommand({
+      TableName: JOBS_TABLE,
+      FilterExpression: "loe.documentId = :d",
+      ExpressionAttributeValues: { ":d": documentId },
+    }),
+  );
+  return res.Items?.[0] as Job | undefined;
 }
 
 export async function setBooking(

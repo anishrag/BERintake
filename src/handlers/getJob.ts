@@ -47,6 +47,8 @@ export const handler = async (
     quote: job.quote ?? null,
     booking: job.booking ?? null,
     keyDetails: job.keyDetails ?? null,
+    invoice: job.invoice ? { docNumber: job.invoice.docNumber, total: job.invoice.total } : null,
+    loe: job.loe ? { status: job.loe.status } : null,
   };
 
   return {
