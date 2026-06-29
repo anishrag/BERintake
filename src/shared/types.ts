@@ -39,6 +39,8 @@ export interface Job {
   partnerName?: string; // set when source === "partner" (referral tracking)
   note?: string;
   client: ClientDetails;
+  // Tentative slot reservation while the client fills the booking form.
+  hold?: { eventId: string; holdUntil: string };
   // Computed once from the eircode (geocode → zone), cached for the quote page.
   serviceArea?: string;
   quotePrices?: Record<string, number>; // house type -> price for this zone

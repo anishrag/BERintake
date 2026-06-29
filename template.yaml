@@ -58,6 +58,7 @@ Globals:
         - "https://cannygreen.ie"
         - "https://www.cannygreen.ie"
         - "http://localhost:3000"
+        - "https://d1ze07dqk0doqs.cloudfront.net"
       AllowHeaders:
         - content-type
       AllowMethods:
@@ -73,6 +74,7 @@ Globals:
       Variables:
         JOBS_TABLE: !Ref JobsTable
         BOT_STATE_TABLE: !Ref BotStateTable
+        HOLDS_TABLE: !Ref HoldsTable
         TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
         ALLOWED_CHAT_ID: !Ref AllowedChatId
         PARTNER_ACCESS_KEY: !Ref PartnerAccessKey
@@ -116,6 +118,18 @@ Resources:
         - { AttributeName: chatId, AttributeType: S }
       KeySchema:
         - { AttributeName: chatId, KeyType: HASH }
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  HoldsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: eventId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: eventId, KeyType: HASH }
       TimeToLiveSpecification:
         AttributeName: expiresAt
         Enabled: true
@@ -188,6 +202,26 @@ Resources:
           Type: HttpApi
           Properties: { Path: "/jobs/{token}/email-quote", Method: POST }
 
+  SaveDetailsFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/saveDetails.ts]
+    Properties:
+      Handler: src/handlers/saveDetails.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - Statement:
+            - Effect: Allow
+              Action: [ses:SendEmail, ses:SendRawEmail]
+              Resource: "*"
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/jobs/{token}/details", Method: POST }
+
   SlotsFn:
     Type: AWS::Serverless::Function
     Metadata:
@@ -199,10 +233,28 @@ Resources:
       Handler: src/handlers/slots.handler
       Policies:
         - DynamoDBReadPolicy: { TableName: !Ref JobsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref HoldsTable }
       Events:
         Get:
           Type: HttpApi
           Properties: { Path: "/jobs/{token}/slots", Method: GET }
+
+  HoldFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/hold.ts]
+    Properties:
+      Handler: src/handlers/hold.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref HoldsTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/jobs/{token}/hold", Method: POST }
 
   BookFn:
     Type: AWS::Serverless::Function
@@ -215,6 +267,7 @@ Resources:
       Handler: src/handlers/book.handler
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref HoldsTable }
       Events:
         Post:
           Type: HttpApi

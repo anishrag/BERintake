@@ -1,0 +1,70 @@
+// POST /jobs/{token}/details — save the in-progress booking details (a draft,
+// does NOT book), so the client can close the form and resume later via the
+// same link. With {email:true}, also emails them a link back to the form.
+
+import type {
+  APIGatewayProxyEventV2,
+  APIGatewayProxyResultV2,
+} from "aws-lambda";
+import { sendEmail } from "../shared/email";
+import { clientLink, getJobByToken, setDetails } from "../shared/jobs";
+
+const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
+  statusCode,
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export const handler = async (
+  event: APIGatewayProxyEventV2,
+): Promise<APIGatewayProxyResultV2> => {
+  const token = event.pathParameters?.token;
+  if (!token) return json(400, { error: "missing token" });
+
+  let body: Record<string, unknown>;
+  try {
+    body = event.body ? JSON.parse(event.body) : {};
+  } catch {
+    return json(400, { error: "invalid JSON" });
+  }
+
+  const job = await getJobByToken(token);
+  if (!job || job.status === "discarded") return json(404, { error: "not found" });
+
+  const details =
+    body.details && typeof body.details === "object"
+      ? (body.details as Record<string, unknown>)
+      : {};
+  await setDetails(job.jobId, details);
+
+  let emailed = false;
+  if (body.email === true) {
+    const name = job.client.name.split(" ")[0];
+    const link = clientLink(job.token);
+    try {
+      await sendEmail({
+        to: job.client.email,
+        subject: "Finish booking your BER assessment — Cannygreen",
+        text: `Hi ${name},
+
+Your details are saved. When you're ready, open this link to finish booking your BER assessment:
+${link}
+
+Note: your assessment is not booked until you submit the form.
+
+Kind regards,
+Anish`,
+        html: `<p>Hi ${name},</p>
+<p>Your details are saved. When you're ready, open this link to finish booking your BER assessment:<br>
+<a href="${link}">${link}</a></p>
+<p><em>Note: your assessment is not booked until you submit the form.</em></p>
+<p>Kind regards,<br>Anish</p>`,
+      });
+      emailed = true;
+    } catch (err) {
+      console.error("failed to send resume email", err);
+    }
+  }
+
+  return json(200, { saved: true, emailed });
+};

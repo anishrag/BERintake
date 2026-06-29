@@ -5,6 +5,7 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { listSlots } from "../shared/calendar";
+import { heldByOthers } from "../shared/holds";
 import { getJobByToken } from "../shared/jobs";
 
 export const handler = async (
@@ -19,11 +20,15 @@ export const handler = async (
   }
 
   try {
-    const slots = await listSlots();
+    const [slots, hidden] = await Promise.all([
+      listSlots(),
+      heldByOthers(job.jobId),
+    ]);
+    const available = slots.filter((s) => !hidden.has(s.id));
     return {
       statusCode: 200,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ slots }),
+      body: JSON.stringify({ slots: available }),
     };
   } catch (err) {
     console.error("failed to list slots", err);

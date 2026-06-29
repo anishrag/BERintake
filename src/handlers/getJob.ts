@@ -46,6 +46,7 @@ export const handler = async (
     quotePrices: quotePrices ?? null,
     quote: job.quote ?? null,
     booking: job.booking ?? null,
+    keyDetails: job.keyDetails ?? null,
   };
 
   return {

@@ -6,7 +6,8 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { bookSlot, getEvent, isOpenSlot } from "../shared/calendar";
-import { getJobByToken, setBooking } from "../shared/jobs";
+import { isHeldByOther, releaseHold } from "../shared/holds";
+import { clearHold, getJobByToken, setBooking, setDetails } from "../shared/jobs";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -30,6 +31,10 @@ export const handler = async (
   }
   const eventId = typeof body.eventId === "string" ? body.eventId : "";
   if (!eventId) return json(400, { error: "eventId required" });
+  const details =
+    body.details && typeof body.details === "object"
+      ? (body.details as Record<string, unknown>)
+      : undefined;
 
   const job = await getJobByToken(token);
   if (!job || job.status === "discarded") return json(404, { error: "not found" });
@@ -39,10 +44,13 @@ export const handler = async (
     return json(200, { status: job.status, booking: job.booking ?? null, alreadyBooked: true });
   }
 
-  // Guard against double-booking a slot someone else just took.
+  // Guard against double-booking a slot someone else took or holds.
   const calEvent = await getEvent(eventId);
   if (!calEvent) return json(404, { error: "slot-not-found" });
   if (!isOpenSlot(calEvent)) return json(409, { error: "slot-taken" });
+  if (await isHeldByOther(eventId, job.jobId)) {
+    return json(409, { error: "slot-taken" });
+  }
 
   const summary = `BOOKED: ${job.client.name} | ${job.client.eircode} | ${job.client.email}`;
   try {
@@ -52,6 +60,9 @@ export const handler = async (
     return json(502, { error: "booking-failed" });
   }
 
+  // Persist the submitted survey details before flipping to booked.
+  if (details) await setDetails(job.jobId, details);
+
   const booking = {
     eventId,
     start: calEvent.start?.dateTime ?? calEvent.start?.date ?? null,
@@ -59,6 +70,8 @@ export const handler = async (
     bookedAt: new Date().toISOString(),
   };
   await setBooking(job.jobId, booking);
+  await releaseHold(eventId);
+  await clearHold(job.jobId);
 
   return json(200, { status: "booked", booking });
 };

@@ -115,6 +115,53 @@ export async function setQuotePricing(
   );
 }
 
+export async function setHold(
+  jobId: string,
+  eventId: string,
+  holdUntil: string,
+): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "SET #h = :h, updatedAt = :u",
+      ExpressionAttributeNames: { "#h": "hold" },
+      ExpressionAttributeValues: {
+        ":h": { eventId, holdUntil },
+        ":u": new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function clearHold(jobId: string): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "REMOVE #h",
+      ExpressionAttributeNames: { "#h": "hold" },
+    }),
+  );
+}
+
+export async function setDetails(
+  jobId: string,
+  details: Record<string, unknown>,
+): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "SET keyDetails = :d, updatedAt = :u",
+      ExpressionAttributeValues: {
+        ":d": details,
+        ":u": new Date().toISOString(),
+      },
+    }),
+  );
+}
+
 export async function setBooking(
   jobId: string,
   booking: Record<string, unknown>,
