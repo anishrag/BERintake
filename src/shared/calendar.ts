@@ -82,6 +82,44 @@ export function isOpenSlot(event: any): boolean {
   return typeof event?.summary === "string" && event.summary.includes(SLOT_MARKER);
 }
 
+/**
+ * Create a new booked event at a specific local Irish time (pre-agreed via
+ * Telegram /newclient). `startNaive`/`endNaive` are "YYYY-MM-DDTHH:MM:00"
+ * with no offset — Google interprets them in the given time zone.
+ */
+export async function createBookedEvent(
+  summary: string,
+  startNaive: string,
+  endNaive: string,
+): Promise<{ id: string; start: string; end: string }> {
+  const token = await getAccessToken();
+  const tz = "Europe/Dublin";
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${calPath()}/events`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        summary,
+        start: { dateTime: startNaive, timeZone: tz },
+        end: { dateTime: endNaive, timeZone: tz },
+      }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`calendar create failed: ${res.status} ${await res.text()}`);
+  }
+  const e: any = await res.json();
+  return {
+    id: e.id,
+    start: e.start?.dateTime ?? startNaive,
+    end: e.end?.dateTime ?? endNaive,
+  };
+}
+
 /** Rename the event to mark it booked. */
 export async function bookSlot(eventId: string, summary: string): Promise<any> {
   const token = await getAccessToken();

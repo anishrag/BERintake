@@ -13,10 +13,23 @@ import {
   type BotState,
   clearState,
   getState,
+  markUpdateProcessed,
   setState,
 } from "../shared/botState";
-import { clientLink, createJob, getJobById, setJobStatus } from "../shared/jobs";
-import { sendQuoteRequestEmail } from "../shared/notify";
+import { createBookedEvent } from "../shared/calendar";
+import { computeQuotePricing } from "../shared/pricing";
+import {
+  clientLink,
+  createJob,
+  getJobById,
+  setBooking,
+  setJobStatus,
+  setQuote,
+} from "../shared/jobs";
+import {
+  sendBookingPrefilledEmail,
+  sendQuoteRequestEmail,
+} from "../shared/notify";
 import {
   allowedChatId,
   tgAnswerCallback,
@@ -38,6 +51,11 @@ export const handler = async (
   }
 
   try {
+    // De-duplicate: Telegram retries a webhook it thinks failed/timed out.
+    if (typeof update.update_id === "number") {
+      if (!(await markUpdateProcessed(update.update_id))) return ok();
+    }
+
     if (update.callback_query) {
       await handleCallback(update.callback_query);
       return ok();
@@ -69,11 +87,47 @@ export const handler = async (
   return ok();
 };
 
+const SIZE_MAP: Record<string, string> = {
+  apt: "apartment",
+  apartment: "apartment",
+  lt200: "small-house",
+  "<200": "small-house",
+  small: "small-house",
+  mt200: "large-house",
+  ">200": "large-house",
+  large: "large-house",
+};
+
+function sizeToPropertyType(size: string): string | undefined {
+  return SIZE_MAP[size.trim().toLowerCase()];
+}
+
+/** Parse "YYYY-MM-DD HH:MM" into naive start + end (+1h) strings. */
+function parseDateTime(
+  input: string,
+): { startNaive: string; endNaive: string } | undefined {
+  const m = input.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})$/);
+  if (!m) return undefined;
+  const [, y, mo, d, h, mi] = m;
+  const hour = Number(h);
+  const min = Number(mi);
+  if (hour > 23 || min > 59) return undefined;
+  const p = (n: number) => String(n).padStart(2, "0");
+  const startNaive = `${y}-${mo}-${d}T${p(hour)}:${p(min)}:00`;
+  const endMs = Date.UTC(Number(y), Number(mo) - 1, Number(d), hour, min) + 3600000;
+  const e = new Date(endMs);
+  const endNaive = `${e.getUTCFullYear()}-${p(e.getUTCMonth() + 1)}-${p(e.getUTCDate())}T${p(e.getUTCHours())}:${p(e.getUTCMinutes())}:00`;
+  return { startNaive, endNaive };
+}
+
 async function handleOwnerMessage(chatId: string, text: string): Promise<void> {
   if (text === "/start") {
     await tgSend(
       chatId,
-      "👋 <b>BER Intake</b>\n\n/newclient — start a new job\n/cancel — abort the current one",
+      "👋 <b>BER Intake</b>\n\n" +
+        "/newquote — client gets a link to choose property type, date & price themselves\n" +
+        "/newclient — pre-agreed: you set size, date/time & (optional) price\n" +
+        "/cancel — abort the current one",
     );
     return;
   }
@@ -82,15 +136,20 @@ async function handleOwnerMessage(chatId: string, text: string): Promise<void> {
     await tgSend(chatId, "Cancelled.");
     return;
   }
+  if (text === "/newquote") {
+    await setState({ chatId, flow: "quote", step: "name", draft: {} });
+    await tgSend(chatId, "New quote. What's the client's <b>name</b>?");
+    return;
+  }
   if (text === "/newclient") {
-    await setState({ chatId, step: "name", draft: {} });
-    await tgSend(chatId, "New job. What's the client's <b>name</b>?");
+    await setState({ chatId, flow: "client", step: "name", draft: {} });
+    await tgSend(chatId, "New pre-agreed booking. What's the client's <b>name</b>?");
     return;
   }
 
   const state = await getState(chatId);
   if (!state) {
-    await tgSend(chatId, "Use /newclient to start a new job.");
+    await tgSend(chatId, "Use /newquote or /newclient to start.");
     return;
   }
   await advance(chatId, state, text);
@@ -105,40 +164,153 @@ async function advance(
   switch (state.step) {
     case "name":
       draft.name = text;
-      await setState({ chatId, step: "email", draft });
+      await setState({ chatId, flow: state.flow, step: "email", draft });
       await tgSend(chatId, "Client's <b>email</b>?");
       return;
     case "email":
       draft.email = text;
-      await setState({ chatId, step: "phone", draft });
+      await setState({ chatId, flow: state.flow, step: "phone", draft });
       await tgSend(chatId, "Client's <b>phone</b>? (or type 'skip')");
       return;
     case "phone":
       draft.phone = /^skip$/i.test(text) ? undefined : text;
-      await setState({ chatId, step: "eircode", draft });
+      await setState({ chatId, flow: state.flow, step: "eircode", draft });
       await tgSend(chatId, "Client's <b>eircode</b>?");
       return;
     case "eircode": {
       draft.eircode = text;
-      await clearState(chatId);
-      const job = await createJob({
-        client: {
-          name: draft.name!,
-          email: draft.email!,
-          phone: draft.phone,
-          eircode: draft.eircode!,
-        },
-        source: "telegram",
-        requireReview: false,
-      });
-      await sendQuoteRequestEmail(job);
+      if (state.flow === "quote") {
+        await clearState(chatId);
+        const job = await createJob({
+          client: clientOf(draft),
+          source: "telegram",
+          requireReview: false,
+        });
+        await sendQuoteRequestEmail(job);
+        await tgSend(
+          chatId,
+          `✅ Quote created for <b>${job.client.name}</b> — quote email sent to ${job.client.email}.\n\nClient link:\n${clientLink(job.token)}`,
+        );
+        return;
+      }
+      // client flow — gather the pre-agreed details next
+      await setState({ chatId, flow: state.flow, step: "size", draft });
       await tgSend(
         chatId,
-        `✅ Job created for <b>${job.client.name}</b> — quote email sent to ${job.client.email}.\n\nClient quote link:\n${clientLink(job.token)}`,
+        "Property <b>size</b>? Reply <code>apt</code>, <code>lt200</code> (house &lt;200m²), or <code>mt200</code> (house &gt;200m²).",
       );
       return;
     }
+    case "size": {
+      const pt = sizeToPropertyType(text);
+      if (!pt) {
+        await tgSend(chatId, "Please reply <code>apt</code>, <code>lt200</code>, or <code>mt200</code>.");
+        return;
+      }
+      draft.size = text.trim().toLowerCase();
+      await setState({ chatId, flow: state.flow, step: "datetime", draft });
+      await tgSend(
+        chatId,
+        "Appointment <b>date & time</b>? Format <code>YYYY-MM-DD HH:MM</code> (24h, Irish time). E.g. <code>2026-07-10 14:00</code>",
+      );
+      return;
+    }
+    case "datetime": {
+      if (!parseDateTime(text)) {
+        await tgSend(chatId, "Couldn't read that. Use <code>YYYY-MM-DD HH:MM</code>, e.g. <code>2026-07-10 14:00</code>");
+        return;
+      }
+      draft.datetime = text.trim();
+      await setState({ chatId, flow: state.flow, step: "price", draft });
+      await tgSend(chatId, "Agreed <b>price</b> in €? (or type 'skip' to use the standard zone price)");
+      return;
+    }
+    case "price": {
+      if (!/^skip$/i.test(text)) {
+        const n = Number(text.replace(/[€,\s]/g, ""));
+        if (!Number.isFinite(n) || n < 0) {
+          await tgSend(chatId, "Please enter a number (e.g. 280) or 'skip'.");
+          return;
+        }
+        draft.price = n;
+      }
+      await clearState(chatId);
+      await createPreAgreedJob(chatId, draft);
+      return;
+    }
   }
+}
+
+function clientOf(draft: {
+  name?: string;
+  email?: string;
+  phone?: string;
+  eircode?: string;
+}) {
+  return {
+    name: draft.name!,
+    email: draft.email!,
+    phone: draft.phone,
+    eircode: draft.eircode!,
+  };
+}
+
+async function createPreAgreedJob(
+  chatId: string,
+  draft: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    eircode?: string;
+    size?: string;
+    datetime?: string;
+    price?: number;
+  },
+): Promise<void> {
+  const propertyType = sizeToPropertyType(draft.size!)!;
+  const dt = parseDateTime(draft.datetime!)!;
+
+  let price = draft.price;
+  if (price == null) {
+    const computed = await computeQuotePricing(draft.eircode!);
+    if (computed) price = (computed.prices as any)[propertyType];
+  }
+
+  const job = await createJob({
+    client: clientOf(draft),
+    source: "telegram",
+    requireReview: false,
+  });
+  await setQuote(job.jobId, {
+    propertyType,
+    price,
+    quotedAt: new Date().toISOString(),
+  });
+
+  const summary = `BOOKED: ${job.client.name} | ${job.client.eircode} | ${job.client.email}`;
+  let bookingLine = "";
+  try {
+    const ev = await createBookedEvent(summary, dt.startNaive, dt.endNaive);
+    await setBooking(job.jobId, {
+      eventId: ev.id,
+      start: ev.start,
+      end: ev.end,
+      bookedAt: new Date().toISOString(),
+    });
+    bookingLine = `\n📅 ${ev.start}`;
+  } catch (err) {
+    console.error("failed to create calendar event", err);
+    bookingLine = "\n⚠️ Couldn't add to calendar — add it manually.";
+  }
+
+  const full = (await getJobById(job.jobId)) ?? job;
+  await sendBookingPrefilledEmail(full);
+
+  await tgSend(
+    chatId,
+    `✅ Booking created for <b>${job.client.name}</b> (${propertyType}${price != null ? `, €${price}` : ""}).${bookingLine}\n` +
+      `Email sent to ${job.client.email}.\n\nClient link:\n${clientLink(job.token)}`,
+  );
 }
 
 async function handleCallback(cb: any): Promise<void> {
