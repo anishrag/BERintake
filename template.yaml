@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: BER Intake — client intake backend (precursor to BER_APP).
+
+Parameters:
+  TelegramBotToken:
+    Type: String
+    NoEcho: true
+    Description: Bot token from @BotFather.
+  AllowedChatId:
+    Type: String
+    Default: ""
+    Description: Your Telegram chat id. Leave blank on first deploy, then /start the bot to learn it and redeploy with it set.
+  PartnerAccessKey:
+    Type: String
+    NoEcho: true
+    Description: Shared secret the partner web form must send to create a job.
+  PublicSiteUrl:
+    Type: String
+    Default: https://cannygreen.ie
+    Description: Base URL the client-facing quote link is built from.
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 15
+    Environment:
+      Variables:
+        JOBS_TABLE: !Ref JobsTable
+        BOT_STATE_TABLE: !Ref BotStateTable
+        TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
+        ALLOWED_CHAT_ID: !Ref AllowedChatId
+        PARTNER_ACCESS_KEY: !Ref PartnerAccessKey
+        PUBLIC_SITE_URL: !Ref PublicSiteUrl
+
+Resources:
+  JobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: jobId, AttributeType: S }
+        - { AttributeName: token, AttributeType: S }
+        - { AttributeName: status, AttributeType: S }
+        - { AttributeName: createdAt, AttributeType: S }
+      KeySchema:
+        - { AttributeName: jobId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: token-index
+          KeySchema:
+            - { AttributeName: token, KeyType: HASH }
+          Projection: { ProjectionType: ALL }
+        - IndexName: status-index
+          KeySchema:
+            - { AttributeName: status, KeyType: HASH }
+            - { AttributeName: createdAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  BotStateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: chatId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: chatId, KeyType: HASH }
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  CreateJobFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/createJob.ts]
+    Properties:
+      Handler: src/handlers/createJob.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: /jobs, Method: POST }
+
+  GetJobFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/getJob.ts]
+    Properties:
+      Handler: src/handlers/getJob.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: "/jobs/{token}", Method: GET }
+
+  TelegramWebhookFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/telegramWebhook.ts]
+    Properties:
+      Handler: src/handlers/telegramWebhook.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref BotStateTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: /telegram/webhook, Method: POST }
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the HTTP API.
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  TelegramWebhookUrl:
+    Description: Set this as the bot webhook (see README).
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/telegram/webhook"

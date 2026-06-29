@@ -1,0 +1,22 @@
+{
+  "name": "ber-intake",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Client intake backend (precursor to BER_APP): Telegram + partner-form job creation, quote/book/pay/sign flow on AWS serverless.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "build": "sam build",
+    "deploy": "sam deploy --guided"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.658.0",
+    "@aws-sdk/lib-dynamodb": "^3.658.0",
+    "esbuild": "^0.24.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.0"
+  }
+}
