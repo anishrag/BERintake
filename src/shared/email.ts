@@ -13,11 +13,13 @@ export async function sendEmail(opts: {
 }): Promise<void> {
   const from = process.env.QUOTE_FROM_EMAIL || "test@cannygreen.com";
 
-  // Testing override: when set, redirect every email here and flag the real
-  // intended recipient in the subject. Leave blank in production.
-  const override = process.env.TEST_EMAIL_OVERRIDE?.trim();
-  const to = override || opts.to;
-  const subject = override ? `[TEST → ${opts.to}] ${opts.subject}` : opts.subject;
+  // Testing override: when set to a real address, redirect every email there
+  // and flag the intended recipient in the subject. "off"/"none"/blank = send
+  // to the real recipient.
+  const ov = process.env.TEST_EMAIL_OVERRIDE?.trim();
+  const useOverride = !!ov && !["off", "none", ""].includes(ov.toLowerCase());
+  const to = useOverride ? ov! : opts.to;
+  const subject = useOverride ? `[TEST → ${opts.to}] ${opts.subject}` : opts.subject;
 
   await ses.send(
     new SendEmailCommand({

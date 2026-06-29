@@ -5,6 +5,58 @@ import { sendEmail } from "./email";
 import { clientLink } from "./jobs";
 import type { Job } from "./types";
 
+export async function sendBookingConfirmedEmail(job: Job): Promise<void> {
+  const firstName = job.client.name.split(" ")[0] || "there";
+  const website = "https://cannygreen.ie";
+  let when = "";
+  const start = (job.booking as any)?.start;
+  if (start) {
+    try {
+      when = new Date(start).toLocaleString("en-IE", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      when = "";
+    }
+  }
+
+  const text = `Hi ${firstName},
+
+Your BER assessment is now booked and confirmed${when ? ` for ${when}` : ""}.
+
+Thank you for completing everything — payment, the letter of engagement, and confirming access.
+
+To see what to expect on the day, have a look at our website:
+${website}
+
+I look forward to meeting you.
+
+Kind regards,
+Anish
+Cannygreen`;
+
+  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#222;max-width:560px">
+  <p>Hi ${firstName},</p>
+  <p>Your BER assessment is now <strong>booked and confirmed</strong>${when ? ` for <strong>${when}</strong>` : ""}.</p>
+  <p>Thank you for completing everything — payment, the letter of engagement, and confirming access.</p>
+  <p>To see what to expect on the day, have a look at our website:<br>
+  <a href="${website}" style="color:#2e7d32">${website}</a></p>
+  <p>I look forward to meeting you.</p>
+  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
+</div>`;
+
+  await sendEmail({
+    to: job.client.email,
+    subject: "You're booked! — Cannygreen BER assessment",
+    text,
+    html,
+  });
+}
+
 export async function sendQuoteRequestEmail(job: Job): Promise<void> {
   const firstName = job.client.name.split(" ")[0] || "there";
   const link = clientLink(job.token);
