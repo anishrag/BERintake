@@ -50,6 +50,24 @@ Parameters:
     Type: String
     Default: ""
     Description: Calendar id holding the "Slot Available" events.
+  QbClientId:
+    Type: String
+    Default: ""
+    Description: QuickBooks (Intuit) OAuth client id.
+  QbClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: QuickBooks OAuth client secret.
+  QbEnv:
+    Type: String
+    Default: sandbox
+    AllowedValues: [sandbox, production]
+    Description: QuickBooks environment — sandbox while building, production for the real account.
+  QbTaxCodeId:
+    Type: String
+    Default: ""
+    Description: Optional QuickBooks TaxCode id for invoice lines. Blank = auto-pick a zero/exempt code.
 
 Globals:
   HttpApi:
@@ -86,6 +104,11 @@ Globals:
         GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
         GOOGLE_REFRESH_TOKEN: !Ref GoogleRefreshToken
         GOOGLE_CALENDAR_ID: !Ref GoogleCalendarId
+        QB_CLIENT_ID: !Ref QbClientId
+        QB_CLIENT_SECRET: !Ref QbClientSecret
+        QB_ENV: !Ref QbEnv
+        QB_AUTH_TABLE: !Ref QbAuthTable
+        QB_TAX_CODE_ID: !Ref QbTaxCodeId
 
 Resources:
   JobsTable:
@@ -133,6 +156,15 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: expiresAt
         Enabled: true
+
+  QbAuthTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
 
   CreateJobFn:
     Type: AWS::Serverless::Function
@@ -272,6 +304,86 @@ Resources:
         Post:
           Type: HttpApi
           Properties: { Path: "/jobs/{token}/book", Method: POST }
+
+  GenerateInvoiceFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/generateInvoice.ts]
+    Properties:
+      Handler: src/handlers/generateInvoice.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/jobs/{token}/invoice", Method: POST }
+
+  InvoicePdfFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/invoicePdf.ts]
+    Properties:
+      Handler: src/handlers/invoicePdf.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: "/jobs/{token}/invoice.pdf", Method: GET }
+
+  QbConnectFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/qbConnect.ts]
+    Properties:
+      Handler: src/handlers/qbConnect.handler
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: /qb/connect, Method: GET }
+
+  QbCallbackFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/qbCallback.ts]
+    Properties:
+      Handler: src/handlers/qbCallback.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: /qb/callback, Method: GET }
+
+  QbStatusFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/qbStatus.ts]
+    Properties:
+      Handler: src/handlers/qbStatus.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: /qb/status, Method: GET }
 
   TelegramWebhookFn:
     Type: AWS::Serverless::Function

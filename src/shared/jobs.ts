@@ -162,6 +162,23 @@ export async function setDetails(
   );
 }
 
+export async function setInvoice(
+  jobId: string,
+  invoice: { id: string; total?: number; docNumber?: string; createdAt: string },
+): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "SET invoice = :i, updatedAt = :u",
+      ExpressionAttributeValues: {
+        ":i": invoice,
+        ":u": new Date().toISOString(),
+      },
+    }),
+  );
+}
+
 export async function setBooking(
   jobId: string,
   booking: Record<string, unknown>,

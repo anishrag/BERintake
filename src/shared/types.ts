@@ -49,6 +49,7 @@ export interface Job {
   payment?: Record<string, unknown>;
   signature?: Record<string, unknown>;
   keyDetails?: Record<string, unknown>;
+  invoice?: { id: string; total?: number; docNumber?: string; createdAt: string };
   berSeed?: BerSeed;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
