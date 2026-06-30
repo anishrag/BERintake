@@ -331,6 +331,28 @@ Resources:
           Type: HttpApi
           Properties: { Path: "/jobs/{token}/book", Method: POST }
 
+  RemindFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/remindIncomplete.ts]
+    Properties:
+      Handler: src/handlers/remindIncomplete.handler
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - Statement:
+            - Effect: Allow
+              Action: [ses:SendEmail, ses:SendRawEmail]
+              Resource: "*"
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(12 hours)
+
   ConfirmFn:
     Type: AWS::Serverless::Function
     Metadata:

@@ -111,6 +111,49 @@ Cannygreen`;
   });
 }
 
+// A gentle nudge for a booking where the client hasn't finished the steps.
+export async function sendReminderEmail(
+  job: Job,
+  kind: "post24h" | "daybefore" = "post24h",
+): Promise<void> {
+  const firstName = job.client.name.split(" ")[0] || "there";
+  const link = clientLink(job.token);
+  const signed = (job.loe as any)?.status === "completed";
+  const outstanding = signed
+    ? "add your payment details"
+    : "add your payment details and sign the letter of engagement";
+
+  const opener =
+    kind === "daybefore"
+      ? "Your BER assessment is coming up soon."
+      : "Just a quick note about your BER booking.";
+  const subject =
+    kind === "daybefore"
+      ? "Your BER assessment is coming up — one step left"
+      : "Finish your BER booking — Cannygreen";
+
+  const text = `Hi ${firstName},
+
+${opener} To confirm it, please ${outstanding}. It only takes a minute:
+
+${link}
+
+Kind regards,
+Anish
+Cannygreen`;
+
+  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#222;max-width:560px">
+  <p>Hi ${firstName},</p>
+  <p>${opener} To confirm it, please ${outstanding}. It only takes a minute:</p>
+  <p style="text-align:center;margin:28px 0">
+    <a href="${link}" style="background:#2e7d32;color:#fff;text-decoration:none;padding:13px 26px;border-radius:8px;font-weight:600;display:inline-block">Complete my booking</a>
+  </p>
+  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
+</div>`;
+
+  await sendEmail({ to: job.client.email, subject, text, html });
+}
+
 export async function sendQuoteRequestEmail(job: Job): Promise<void> {
   const firstName = job.client.name.split(" ")[0] || "there";
   const link = clientLink(job.token);

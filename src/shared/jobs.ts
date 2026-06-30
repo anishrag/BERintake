@@ -237,6 +237,33 @@ export async function setBooking(
   );
 }
 
+/** All booked-but-not-confirmed jobs (for the reminder sweep). */
+export async function findBooked(): Promise<Job[]> {
+  const res = await ddb.send(
+    new QueryCommand({
+      TableName: JOBS_TABLE,
+      IndexName: "status-index",
+      KeyConditionExpression: "#s = :b",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: { ":b": "booked" },
+    }),
+  );
+  return (res.Items ?? []) as Job[];
+}
+
+export async function addReminderSent(jobId: string, key: string): Promise<void> {
+  const now = new Date().toISOString();
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression:
+        "SET remindersSent = list_append(if_not_exists(remindersSent, :empty), :k), updatedAt = :u",
+      ExpressionAttributeValues: { ":empty": [], ":k": [key], ":u": now },
+    }),
+  );
+}
+
 export function clientLink(token: string): string {
   const base = process.env.PUBLIC_SITE_URL ?? "https://cannygreen.ie";
   return `${base}/quote/${token}`;
