@@ -160,9 +160,46 @@ async function geocodeEircode(
 }
 
 /** Geocode → zone → per-house-type prices. Null if geocoding is unavailable. */
+// Zone by eircode routing key (first 3 chars) — avoids geocoding entirely for
+// the areas we serve. Anything NOT listed here is treated as "outside" (no
+// geocode). Only the boundary keys in GEOCODE_KEYS fall through to a precise
+// geocode. To add a new served area, just add its routing key below.
+const ROUTING_KEY_ZONES: Record<string, ServiceArea> = {
+  A63: "primary",
+  D18: "primary",
+  A94: "secondary",
+  A96: "secondary",
+  D04: "secondary",
+  D06: "secondary",
+  D14: "secondary",
+  D16: "secondary",
+  A67: "tertiary",
+  D12: "tertiary",
+  D24: "tertiary",
+};
+
+// Routing keys that straddle a zone boundary — geocode these for precision.
+const GEOCODE_KEYS = new Set(["A98"]);
+
+function routingKey(eircode: string): string {
+  return eircode.replace(/\s+/g, "").toUpperCase().slice(0, 3);
+}
+
+/** Zone from the routing key, or undefined if it needs a precise geocode. */
+function zoneFromRoutingKey(eircode: string): ServiceArea | undefined {
+  const key = routingKey(eircode);
+  if (GEOCODE_KEYS.has(key)) return undefined;
+  return ROUTING_KEY_ZONES[key] ?? "outside";
+}
+
 export async function computeQuotePricing(
   eircode: string,
 ): Promise<{ serviceArea: ServiceArea; prices: Record<HouseType, number> } | null> {
+  // Fast path: routing-key lookup, no geocoding (covers all but boundary keys).
+  const direct = zoneFromRoutingKey(eircode.trim());
+  if (direct) return { serviceArea: direct, prices: pricesForArea(direct) };
+
+  // Boundary key (e.g. A98) — geocode for a precise zone.
   const coords = await geocodeEircode(eircode.trim());
   if (!coords) return null;
   const serviceArea = determineServiceArea(coords.lat, coords.lng);
