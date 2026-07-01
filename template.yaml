@@ -218,6 +218,20 @@ Resources:
           Type: HttpApi
           Properties: { Path: /jobs, Method: POST }
 
+  ZoneFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/zoneLookup.ts]
+    Properties:
+      Handler: src/handlers/zoneLookup.handler
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: /zone, Method: GET }
+
   GetJobFn:
     Type: AWS::Serverless::Function
     Metadata:
