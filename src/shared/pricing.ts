@@ -3,6 +3,8 @@
 // website's pricing.js + priceCalculator.js so a client gets a real price on
 // the web without depending on the site's local Express server.
 
+import { A98_PRIMARY, A98_SECONDARY } from "./a98Zones";
+
 export type HouseType = "apartment" | "small-house" | "large-house";
 export type ServiceArea = "primary" | "secondary" | "tertiary" | "outside";
 
@@ -19,7 +21,7 @@ const pricing: Record<"primary" | "secondary" | "tertiary", Tier> & {
 
 type LngLat = { lng: number; lat: number };
 
-const serviceAreaPolygons: Record<
+export const serviceAreaPolygons: Record<
   "primaryArea" | "secondaryArea" | "tertiaryArea",
   LngLat[]
 > = {
@@ -164,18 +166,21 @@ async function geocodeEircode(
 // the areas we serve. Anything NOT listed here is treated as "outside" (no
 // geocode). Only the boundary keys in GEOCODE_KEYS fall through to a precise
 // geocode. To add a new served area, just add its routing key below.
-const ROUTING_KEY_ZONES: Record<string, ServiceArea> = {
-  A63: "primary",
-  D18: "primary",
-  A94: "secondary",
-  A96: "secondary",
-  D04: "secondary",
-  D06: "secondary",
-  D14: "secondary",
+export const ROUTING_KEY_ZONES: Record<string, ServiceArea> = {
+  // Primary is only (part of) A98 (Bray core) — resolved live via geocode below.
+  A63: "secondary",
+  D18: "secondary",
   D16: "secondary",
-  A67: "tertiary",
-  D12: "tertiary",
+  A96: "secondary",
+  D14: "tertiary",
+  A94: "tertiary",
+  D06: "tertiary",
+  D6W: "tertiary",
   D24: "tertiary",
+  A67: "tertiary",
+  D04: "tertiary",
+  D08: "tertiary",
+  D12: "tertiary",
 };
 
 // Routing keys that straddle a zone boundary — geocode these for precision.
@@ -199,9 +204,16 @@ export async function computeQuotePricing(
   const direct = zoneFromRoutingKey(eircode.trim());
   if (direct) return { serviceArea: direct, prices: pricesForArea(direct) };
 
-  // Boundary key (e.g. A98) — geocode for a precise zone.
+  // Boundary key (A98): geocode, then classify into the A98 sub-zones
+  // (primary Bray core / secondary valley / tertiary mountains+south).
   const coords = await geocodeEircode(eircode.trim());
-  if (!coords) return null;
-  const serviceArea = determineServiceArea(coords.lat, coords.lng);
+  if (!coords) return { serviceArea: "secondary", prices: pricesForArea("secondary") };
+  const serviceArea = a98Zone(coords.lat, coords.lng);
   return { serviceArea, prices: pricesForArea(serviceArea) };
+}
+
+function a98Zone(lat: number, lng: number): ServiceArea {
+  if (isPointInPolygon(lat, lng, A98_PRIMARY)) return "primary";
+  if (isPointInPolygon(lat, lng, A98_SECONDARY)) return "secondary";
+  return "tertiary";
 }

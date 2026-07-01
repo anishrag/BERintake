@@ -265,6 +265,6 @@ export async function addReminderSent(jobId: string, key: string): Promise<void>
 }
 
 export function clientLink(token: string): string {
-  const base = process.env.PUBLIC_SITE_URL ?? "https://cannygreen.ie";
+  const base = process.env.PUBLIC_SITE_URL ?? "https://cannygreen.com";
   return `${base}/quote/${token}`;
 }

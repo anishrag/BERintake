@@ -9,6 +9,7 @@ import type {
 import { clientLink, createJob } from "../shared/jobs";
 import { sendQuoteRequestEmail } from "../shared/notify";
 import { notifyOwner } from "../shared/telegram";
+import { verifyTurnstile } from "../shared/turnstile";
 import type { JobSource } from "../shared/types";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
@@ -27,10 +28,23 @@ export const handler = async (
     return json(400, { error: "invalid JSON" });
   }
 
-  const source: JobSource = body.source === "partner" ? "partner" : "web_admin";
+  // Every create path is authenticated — no anonymous job creation:
+  //  - web        : public self-serve, gated by a Turnstile CAPTCHA
+  //  - partner    : the partner form, gated by the shared access key
+  //  - web_admin  : your own admin tooling, gated by the access key
+  const raw = body.source;
+  const source: JobSource =
+    raw === "web" ? "web" : raw === "web_admin" ? "web_admin" : "partner";
 
-  // Partner form is access-key protected so it can't be publicly spammed.
-  if (source === "partner") {
+  if (source === "web") {
+    const ip = (event.requestContext as any)?.http?.sourceIp;
+    const ok = await verifyTurnstile(
+      typeof body.captchaToken === "string" ? body.captchaToken : undefined,
+      ip,
+    );
+    if (!ok) return json(401, { error: "captcha failed" });
+  } else {
+    // partner / web_admin require the shared access key.
     const key = process.env.PARTNER_ACCESS_KEY;
     if (!key || body.accessKey !== key) {
       return json(401, { error: "invalid access key" });
@@ -90,6 +104,7 @@ export const handler = async (
   return json(201, {
     jobId: job.jobId,
     status: job.status,
+    token: job.token,
     clientLink: clientLink(job.token),
   });
 };

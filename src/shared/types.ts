@@ -13,7 +13,7 @@ export type JobStatus =
   | "pulled" // synced into BER_APP on the tablet
   | "discarded";
 
-export type JobSource = "telegram" | "partner" | "web_admin";
+export type JobSource = "telegram" | "partner" | "web" | "web_admin";
 
 export interface ClientDetails {
   name: string;

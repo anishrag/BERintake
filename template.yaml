@@ -15,9 +15,14 @@ Parameters:
     Type: String
     NoEcho: true
     Description: Shared secret the partner web form must send to create a job.
+  TurnstileSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Cloudflare Turnstile secret key for the public website job-creation CAPTCHA. Blank = CAPTCHA skipped (dev only).
   PublicSiteUrl:
     Type: String
-    Default: https://cannygreen.ie
+    Default: https://cannygreen.com
     Description: Base URL the client-facing quote link is built from.
   GoogleMapsApiKey:
     Type: String
@@ -89,10 +94,14 @@ Parameters:
 
 Globals:
   HttpApi:
+    # Basic abuse/cost backstop across the whole API.
+    DefaultRouteSettings:
+      ThrottlingBurstLimit: 40
+      ThrottlingRateLimit: 20
     CorsConfiguration:
       AllowOrigins:
-        - "https://cannygreen.ie"
-        - "https://www.cannygreen.ie"
+        - "https://cannygreen.com"
+        - "https://www.cannygreen.com"
         - "http://localhost:3000"
         - "https://d1ze07dqk0doqs.cloudfront.net"
       AllowHeaders:
@@ -114,6 +123,7 @@ Globals:
         TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
         ALLOWED_CHAT_ID: !Ref AllowedChatId
         PARTNER_ACCESS_KEY: !Ref PartnerAccessKey
+        TURNSTILE_SECRET: !Ref TurnstileSecret
         PUBLIC_SITE_URL: !Ref PublicSiteUrl
         GOOGLE_MAPS_API_KEY: !Ref GoogleMapsApiKey
         QUOTE_FROM_EMAIL: !Ref QuoteFromEmail

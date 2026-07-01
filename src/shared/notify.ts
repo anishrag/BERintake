@@ -7,7 +7,7 @@ import type { Job } from "./types";
 
 export async function sendBookingConfirmedEmail(job: Job): Promise<void> {
   const firstName = job.client.name.split(" ")[0] || "there";
-  const website = "https://cannygreen.ie";
+  const website = "https://cannygreen.com";
   let when = "";
   const start = (job.booking as any)?.start;
   if (start) {
