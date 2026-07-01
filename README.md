@@ -90,3 +90,39 @@ Now only you can drive the bot, and partner submissions notify you.
 > Secrets are passed as SAM parameters for now. Move `TelegramBotToken` /
 > `PartnerAccessKey` to SSM Parameter Store / Secrets Manager before this
 > handles real client data.
+
+## Deploying
+
+Backend deploy is a single portable script that injects secrets and runs
+`sam build` + `sam deploy` (stack `ber-intake`, us-east-1):
+
+    python3 scripts/deploy.py
+
+Secrets are read from `../BERwebsite/server/secrets/` (override with
+`BER_SECRETS_DIR`):
+
+| file | keys |
+| --- | --- |
+| `.env` | `REACT_APP_GOOGLE_MAPS_API_KEY`, `GOOGLE_CALENDAR_ID` |
+| `credentials.json`, `token.json` | Google OAuth (calendar) |
+| `quickbooks.env` | `QB_CLIENT_ID`, `QB_CLIENT_SECRET` |
+| `signwell.env` | `SIGNWELL_API_KEY`, `SIGNWELL_TEMPLATE_ID` |
+| `turnstile.env` | `TURNSTILE_SECRET` |
+| `telegram.env` *(optional, for a from-scratch deploy)* | `TELEGRAM_BOT_TOKEN`, `PARTNER_ACCESS_KEY`, `ALLOWED_CHAT_ID` |
+
+Env toggles: `PUBLIC_SITE_URL` (prod: `https://cannygreen.com`),
+`TEST_EMAIL_OVERRIDE` (`off` for real recipients), `QUOTE_FROM_EMAIL`,
+`QB_ENV` (`sandbox`|`production`), `STACK_NAME`, `AWS_REGION`, `SKIP_BUILD`.
+
+NoEcho params not found in a secrets file keep their previous CloudFormation
+value — fine for the existing stack; provide `telegram.env` to stand up a
+fresh one.
+
+## New-machine setup
+
+1. Install: **Node 22**, **AWS CLI v2**, **AWS SAM CLI**, **Python 3** (GDAL/ogr2ogr only if regenerating zone maps).
+2. `git clone` this repo and **BERwebsite** as siblings under one parent dir.
+3. `npm install` here and in `BERwebsite/client`.
+4. Configure **AWS credentials** (region `us-east-1`). The infrastructure already lives in AWS — you only manage it; no full redeploy needed.
+5. Copy the **secrets** into `BERwebsite/server/secrets/` (never in git — transfer securely).
+6. Deploy backend: `python3 scripts/deploy.py`. The site (Turnstile site key is a committed default in `client/src/config/api.js`) builds with the client's normal build; sync `client/build` to the S3/CloudFront hosting and invalidate.
