@@ -91,6 +91,11 @@ Parameters:
     Default: "true"
     AllowedValues: ["true", "false"]
     Description: SignWell test mode — true while building (no billing, no real emails).
+  SurveyorAccessKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Shared secret the BER_APP tablet sends (x-surveyor-key) to pull seeds and push finished BERs. Blank = /surveyor/* endpoints reject all requests.
 
 Globals:
   HttpApi:
@@ -141,6 +146,8 @@ Globals:
         SIGNWELL_TEMPLATE_ID: !Ref SignWellTemplateId
         SIGNWELL_PLACEHOLDER: !Ref SignWellPlaceholder
         SIGNWELL_TEST_MODE: !Ref SignWellTestMode
+        ARTIFACTS_BUCKET: !Ref BerArtifactsBucket
+        SURVEYOR_ACCESS_KEY: !Ref SurveyorAccessKey
 
 Resources:
   JobsTable:
@@ -197,6 +204,21 @@ Resources:
         - { AttributeName: id, AttributeType: S }
       KeySchema:
         - { AttributeName: id, KeyType: HASH }
+
+  # Per-job BER assets: satellite.jpg (written at intake), and data.json +
+  # photos/* (pushed by the tablet on completion). Private; the tablet only ever
+  # reaches it through short-lived presigned URLs.
+  BerArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
 
   CreateJobFn:
     Type: AWS::Serverless::Function
@@ -350,6 +372,7 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref HoldsTable }
+        - S3CrudPolicy: { BucketName: !Ref BerArtifactsBucket }
       Events:
         Post:
           Type: HttpApi
@@ -530,6 +553,73 @@ Resources:
           Type: HttpApi
           Properties: { Path: /telegram/webhook, Method: POST }
 
+  # ---- Surveyor (BER_APP tablet) endpoints -------------------------------
+  SurveyorListJobsFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/surveyorListJobs.ts]
+    Properties:
+      Handler: src/handlers/surveyorListJobs.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: /surveyor/jobs, Method: GET }
+
+  SurveyorGetJobFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/surveyorGetJob.ts]
+    Properties:
+      Handler: src/handlers/surveyorGetJob.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref JobsTable }
+        - S3ReadPolicy: { BucketName: !Ref BerArtifactsBucket }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: "/surveyor/jobs/{jobId}", Method: GET }
+
+  SurveyorBerPresignFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/surveyorBerPresign.ts]
+    Properties:
+      Handler: src/handlers/surveyorBerPresign.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - S3CrudPolicy: { BucketName: !Ref BerArtifactsBucket }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/surveyor/jobs/{jobId}/ber/presign", Method: POST }
+
+  SurveyorBerCompleteFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/surveyorBerComplete.ts]
+    Properties:
+      Handler: src/handlers/surveyorBerComplete.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/surveyor/jobs/{jobId}/ber/complete", Method: POST }
+
 Outputs:
   ApiUrl:
     Description: Base URL of the HTTP API.
@@ -537,3 +627,6 @@ Outputs:
   TelegramWebhookUrl:
     Description: Set this as the bot webhook (see README).
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/telegram/webhook"
+  BerArtifactsBucketName:
+    Description: S3 bucket holding per-job BER assets (satellite image, data.json, photos).
+    Value: !Ref BerArtifactsBucket

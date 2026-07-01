@@ -134,9 +134,15 @@ export function pricesForArea(area: ServiceArea): Record<HouseType, number> {
   };
 }
 
-async function geocodeEircode(
+export interface GeocodeResult {
+  lat: number;
+  lng: number;
+  formattedAddress?: string;
+}
+
+export async function geocodeEircode(
   eircode: string,
-): Promise<{ lat: number; lng: number } | null> {
+): Promise<GeocodeResult | null> {
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) {
     console.warn("GOOGLE_MAPS_API_KEY not set — cannot geocode for pricing");
@@ -151,7 +157,8 @@ async function geocodeEircode(
     const res = await fetch(url);
     const data: any = await res.json();
     if (data.status === "OK" && data.results?.length > 0) {
-      return data.results[0].geometry.location;
+      const { lat, lng } = data.results[0].geometry.location;
+      return { lat, lng, formattedAddress: data.results[0].formatted_address };
     }
     console.warn(`geocode for ${eircode} returned ${data.status}`);
     return null;

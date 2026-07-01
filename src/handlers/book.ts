@@ -7,7 +7,13 @@ import type {
 } from "aws-lambda";
 import { bookSlot, getEvent, isOpenSlot } from "../shared/calendar";
 import { isHeldByOther, releaseHold } from "../shared/holds";
-import { clearHold, getJobByToken, setBooking, setDetails } from "../shared/jobs";
+import {
+  clearHold,
+  getJobByToken,
+  seedBerFromEircode,
+  setBooking,
+  setDetails,
+} from "../shared/jobs";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -72,6 +78,16 @@ export const handler = async (
   await setBooking(job.jobId, booking);
   await releaseHold(eventId);
   await clearHold(job.jobId);
+
+  // Now that they've committed, geocode the eircode, grab the satellite image,
+  // and fold the client's booking details into the seed for BER_APP. Best-effort
+  // — never fail a confirmed booking over the seed. Use the just-submitted
+  // details, falling back to any previously-saved draft.
+  try {
+    await seedBerFromEircode(job, details ?? job.keyDetails);
+  } catch (err) {
+    console.error(`berSeed generation failed for ${job.jobId}`, err);
+  }
 
   return json(200, { status: "booked", booking });
 };
