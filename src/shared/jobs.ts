@@ -381,28 +381,15 @@ export async function setBooking(
   );
 }
 
-/** All booked-but-not-confirmed jobs (for the reminder sweep). */
-export async function findBooked(): Promise<Job[]> {
-  const res = await ddb.send(
-    new QueryCommand({
-      TableName: JOBS_TABLE,
-      IndexName: "status-index",
-      KeyConditionExpression: "#s = :b",
-      ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: { ":b": "booked" },
-    }),
-  );
-  return (res.Items ?? []) as Job[];
-}
-
-export async function addReminderSent(jobId: string, key: string): Promise<void> {
+/** Record that a deferred funnel email was sent for this job ("quote" | "loe_nudge" | "save_for_later"). */
+export async function addSentEmail(jobId: string, key: string): Promise<void> {
   const now = new Date().toISOString();
   await ddb.send(
     new UpdateCommand({
       TableName: JOBS_TABLE,
       Key: { jobId },
       UpdateExpression:
-        "SET remindersSent = list_append(if_not_exists(remindersSent, :empty), :k), updatedAt = :u",
+        "SET sentEmails = list_append(if_not_exists(sentEmails, :empty), :k), updatedAt = :u",
       ExpressionAttributeValues: { ":empty": [], ":k": [key], ":u": now },
     }),
   );

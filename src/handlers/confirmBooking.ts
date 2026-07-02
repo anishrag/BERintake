@@ -1,12 +1,12 @@
 // POST /jobs/{token}/confirm — called when the client has completed all
-// finalisation steps. Marks the job confirmed (once) and emails them.
+// finalisation steps. Marks the job confirmed (once) for the assessor pipeline.
+// The client email is sent earlier, on signing (signwellWebhook).
 
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { getJobByToken, setJobStatus } from "../shared/jobs";
-import { sendBookingConfirmedEmail } from "../shared/notify";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -28,11 +28,8 @@ export const handler = async (
     return json(200, { status: "confirmed", alreadyConfirmed: true });
   }
 
+  // Mark ready for the assessor. The client-facing "you're all set" email is
+  // sent earlier, when they sign the letter of engagement (see signwellWebhook).
   await setJobStatus(job.jobId, "confirmed");
-  try {
-    await sendBookingConfirmedEmail(job);
-  } catch (err) {
-    console.error("failed to send confirmation email", err);
-  }
   return json(200, { status: "confirmed" });
 };

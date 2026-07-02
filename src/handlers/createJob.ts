@@ -99,8 +99,13 @@ export const handler = async (
     });
   }
 
-  // Non-review job (web admin) goes straight to quote_sent — email the client.
-  await sendQuoteRequestEmail(job);
+  // web_admin (owner created the job on the client's behalf) → email the client
+  // their quote link. Pure web self-serve doesn't need it: the browser already
+  // has the link and drops the client straight into the funnel, and if they
+  // stall the deferred quote email (sweepDeferredEmails) covers it.
+  if (source !== "web") {
+    await sendQuoteRequestEmail(job);
+  }
   return json(201, {
     jobId: job.jobId,
     status: job.status,

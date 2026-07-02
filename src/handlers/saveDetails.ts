@@ -7,7 +7,7 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { sendEmail } from "../shared/email";
-import { clientLink, getJobByToken, setDetails } from "../shared/jobs";
+import { addSentEmail, clientLink, getJobByToken, setDetails } from "../shared/jobs";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -61,6 +61,9 @@ Anish`,
 <p>Kind regards,<br>Anish</p>`,
       });
       emailed = true;
+      // This "finish booking" link supersedes the deferred quote email, so
+      // record it — the sweep won't also send the quote nudge (#1).
+      await addSentEmail(job.jobId, "save_for_later");
     } catch (err) {
       console.error("failed to send resume email", err);
     }

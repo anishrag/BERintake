@@ -286,26 +286,6 @@ Resources:
           Type: HttpApi
           Properties: { Path: "/jobs/{token}/quote", Method: POST }
 
-  EmailQuoteFn:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Target: es2022
-        EntryPoints: [src/handlers/emailQuote.ts]
-    Properties:
-      Handler: src/handlers/emailQuote.handler
-      Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
-        - Statement:
-            - Effect: Allow
-              Action: [ses:SendEmail, ses:SendRawEmail]
-              Resource: "*"
-      Events:
-        Post:
-          Type: HttpApi
-          Properties: { Path: "/jobs/{token}/email-quote", Method: POST }
-
   SaveDetailsFn:
     Type: AWS::Serverless::Function
     Metadata:
@@ -378,15 +358,18 @@ Resources:
           Type: HttpApi
           Properties: { Path: "/jobs/{token}/book", Method: POST }
 
-  RemindFn:
+  # Deferred funnel emails: quote (1h after quoting, if not booked) and the
+  # letter-of-engagement nudge (10min after booking, if not signed). Runs often
+  # so the 10-minute window stays tight.
+  SweepDeferredEmailsFn:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
         Target: es2022
-        EntryPoints: [src/handlers/remindIncomplete.ts]
+        EntryPoints: [src/handlers/sweepDeferredEmails.ts]
     Properties:
-      Handler: src/handlers/remindIncomplete.handler
+      Handler: src/handlers/sweepDeferredEmails.handler
       Timeout: 60
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
@@ -398,7 +381,7 @@ Resources:
         Schedule:
           Type: Schedule
           Properties:
-            Schedule: rate(12 hours)
+            Schedule: rate(2 minutes)
 
   ConfirmFn:
     Type: AWS::Serverless::Function
@@ -447,6 +430,10 @@ Resources:
       Handler: src/handlers/signwellWebhook.handler
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - Statement:
+            - Effect: Allow
+              Action: [ses:SendEmail, ses:SendRawEmail]
+              Resource: "*"
       Events:
         Post:
           Type: HttpApi

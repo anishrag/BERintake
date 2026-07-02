@@ -81,7 +81,7 @@ export interface Job {
   keyDetails?: Record<string, unknown>;
   invoice?: { id: string; total?: number; docNumber?: string; createdAt: string };
   loe?: { documentId: string; signingUrl?: string; status: string; createdAt: string };
-  remindersSent?: string[]; // which incomplete-booking reminders were emailed ("post24h" | "daybefore")
+  sentEmails?: string[]; // which deferred funnel emails were sent ("quote" | "loe_nudge" | "save_for_later")
   berSeed?: BerSeed;
   ber?: BerResult; // set when the tablet syncs the finished assessment back
   createdAt: string; // ISO 8601

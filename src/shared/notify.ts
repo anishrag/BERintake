@@ -5,32 +5,47 @@ import { sendEmail } from "./email";
 import { clientLink } from "./jobs";
 import type { Job } from "./types";
 
-export async function sendBookingConfirmedEmail(job: Job): Promise<void> {
+const PROPERTY_LABELS: Record<string, string> = {
+  apartment: "Apartment",
+  "small-house": "House (under 200 m²)",
+  "large-house": "House (over 200 m²)",
+};
+
+// The appointment start, formatted for Irish readers. "" if not booked yet.
+function apptWhen(job: Job): string {
+  const start = (job.booking as any)?.start;
+  if (!start) return "";
+  try {
+    return new Date(start).toLocaleString("en-IE", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+const SHELL =
+  "font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#222;max-width:560px";
+const BTN =
+  "background:#2e7d32;color:#fff;text-decoration:none;padding:13px 26px;border-radius:8px;font-weight:600;display:inline-block";
+
+// Email #3 — the terminal "you're all set" email, sent once the client has
+// signed the letter of engagement. Signing is the last thing they do online
+// (payment is handled earlier), so this is the end of the funnel.
+export async function sendAllSetEmail(job: Job): Promise<void> {
   const firstName = job.client.name.split(" ")[0] || "there";
   const website = "https://cannygreen.com";
-  let when = "";
-  const start = (job.booking as any)?.start;
-  if (start) {
-    try {
-      when = new Date(start).toLocaleString("en-IE", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      when = "";
-    }
-  }
+  const when = apptWhen(job);
 
   const text = `Hi ${firstName},
 
-Your BER assessment is now booked and confirmed${when ? ` for ${when}` : ""}.
+You're all set — thank you for booking your BER assessment${when ? ` for ${when}` : ""}.
 
-Thank you for completing everything — payment, the letter of engagement, and confirming access.
-
-To see what to expect on the day, have a look at our website:
+That's everything sorted from your side. To see what to expect on the day, have a look at our website:
 ${website}
 
 I look forward to meeting you.
@@ -39,11 +54,10 @@ Kind regards,
 Anish
 Cannygreen`;
 
-  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#222;max-width:560px">
+  const html = `<div style="${SHELL}">
   <p>Hi ${firstName},</p>
-  <p>Your BER assessment is now <strong>booked and confirmed</strong>${when ? ` for <strong>${when}</strong>` : ""}.</p>
-  <p>Thank you for completing everything — payment, the letter of engagement, and confirming access.</p>
-  <p>To see what to expect on the day, have a look at our website:<br>
+  <p>You're <strong>all set</strong> — thank you for booking your BER assessment${when ? ` for <strong>${when}</strong>` : ""}.</p>
+  <p>That's everything sorted from your side. To see what to expect on the day, have a look at our website:<br>
   <a href="${website}" style="color:#2e7d32">${website}</a></p>
   <p>I look forward to meeting you.</p>
   <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
@@ -51,7 +65,93 @@ Cannygreen`;
 
   await sendEmail({
     to: job.client.email,
-    subject: "You're booked! — Cannygreen BER assessment",
+    subject: "You're all set — see you on the day | Cannygreen BER",
+    text,
+    html,
+  });
+}
+
+// Email #1 — the quote. Deferred ~1h after the client gets their price and
+// enters the booking form; the sweep sends it only if they haven't booked yet.
+export async function sendQuoteEmail(job: Job): Promise<void> {
+  const firstName = job.client.name.split(" ")[0] || "there";
+  const link = clientLink(job.token);
+  const propertyType = (job.quote as any)?.propertyType as string | undefined;
+  const price = (job.quote as any)?.price as number | undefined;
+  const propLabel = propertyType
+    ? PROPERTY_LABELS[propertyType] ?? propertyType
+    : "your property";
+  const priceLine =
+    price != null
+      ? `Your BER assessment quote is €${price} for ${propLabel} at ${job.client.eircode}.`
+      : `We'll confirm the exact price for ${propLabel} at ${job.client.eircode} shortly.`;
+
+  const text = `Hi ${firstName},
+
+Thanks for your enquiry with Cannygreen.
+
+${priceLine}
+
+You started booking but didn't finish — no problem. When you're ready, just pick up where you left off here:
+${link}
+
+If you have any questions, simply reply to this email.
+
+Kind regards,
+Anish
+Cannygreen`;
+
+  const html = `<div style="${SHELL}">
+  <p>Hi ${firstName},</p>
+  <p>Thanks for your enquiry with Cannygreen.</p>
+  <p><strong>${priceLine}</strong></p>
+  <p>You started booking but didn't finish — no problem. When you're ready, just pick up where you left off:</p>
+  <p style="text-align:center;margin:28px 0">
+    <a href="${link}" style="${BTN}">Finish my booking</a>
+  </p>
+  <p>If you have any questions, simply reply to this email.</p>
+  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
+</div>`;
+
+  await sendEmail({
+    to: job.client.email,
+    subject: "Your BER quote with Cannygreen — a couple of details needed",
+    text,
+    html,
+  });
+}
+
+// Email #2 — booked, please sign the letter of engagement. Deferred ~10 min
+// after booking; the sweep sends it only if the LoE isn't signed yet.
+export async function sendLoeNudgeEmail(job: Job): Promise<void> {
+  const firstName = job.client.name.split(" ")[0] || "there";
+  const link = clientLink(job.token);
+  const when = apptWhen(job);
+
+  const text = `Hi ${firstName},
+
+Your BER assessment is booked${when ? ` for ${when}` : ""} — thank you.
+
+There's one last step to confirm it: please read and sign your letter of engagement. It only takes a minute:
+${link}
+
+Kind regards,
+Anish
+Cannygreen`;
+
+  const html = `<div style="${SHELL}">
+  <p>Hi ${firstName},</p>
+  <p>Your BER assessment is <strong>booked</strong>${when ? ` for <strong>${when}</strong>` : ""} — thank you.</p>
+  <p>There's one last step to confirm it: please read and sign your <strong>letter of engagement</strong>. It only takes a minute:</p>
+  <p style="text-align:center;margin:28px 0">
+    <a href="${link}" style="${BTN}">Read &amp; sign the letter of engagement</a>
+  </p>
+  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
+</div>`;
+
+  await sendEmail({
+    to: job.client.email,
+    subject: "One step left — sign your letter of engagement | Cannygreen BER",
     text,
     html,
   });
@@ -109,49 +209,6 @@ Cannygreen`;
     text,
     html,
   });
-}
-
-// A gentle nudge for a booking where the client hasn't finished the steps.
-export async function sendReminderEmail(
-  job: Job,
-  kind: "post24h" | "daybefore" = "post24h",
-): Promise<void> {
-  const firstName = job.client.name.split(" ")[0] || "there";
-  const link = clientLink(job.token);
-  const signed = (job.loe as any)?.status === "completed";
-  const outstanding = signed
-    ? "add your payment details"
-    : "add your payment details and sign the letter of engagement";
-
-  const opener =
-    kind === "daybefore"
-      ? "Your BER assessment is coming up soon."
-      : "Just a quick note about your BER booking.";
-  const subject =
-    kind === "daybefore"
-      ? "Your BER assessment is coming up — one step left"
-      : "Finish your BER booking — Cannygreen";
-
-  const text = `Hi ${firstName},
-
-${opener} To confirm it, please ${outstanding}. It only takes a minute:
-
-${link}
-
-Kind regards,
-Anish
-Cannygreen`;
-
-  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#222;max-width:560px">
-  <p>Hi ${firstName},</p>
-  <p>${opener} To confirm it, please ${outstanding}. It only takes a minute:</p>
-  <p style="text-align:center;margin:28px 0">
-    <a href="${link}" style="background:#2e7d32;color:#fff;text-decoration:none;padding:13px 26px;border-radius:8px;font-weight:600;display:inline-block">Complete my booking</a>
-  </p>
-  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
-</div>`;
-
-  await sendEmail({ to: job.client.email, subject, text, html });
 }
 
 export async function sendQuoteRequestEmail(job: Job): Promise<void> {

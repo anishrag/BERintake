@@ -6,6 +6,7 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { findJobByLoeDocId, setLoeStatus } from "../shared/jobs";
+import { sendAllSetEmail } from "../shared/notify";
 
 const ok = (): APIGatewayProxyResultV2 => ({ statusCode: 200, body: "ok" });
 
@@ -25,10 +26,17 @@ export const handler = async (
 
   try {
     const job = await findJobByLoeDocId(documentId);
-    if (job) {
-      await setLoeStatus(job.jobId, "completed");
-    } else {
+    if (!job) {
       console.warn(`no job for completed LOE doc ${documentId}`);
+    } else if (job.loe?.status !== "completed") {
+      // First completion only — SignWell may retry the webhook. Signing is the
+      // last online step, so this sends the terminal "you're all set" email.
+      await setLoeStatus(job.jobId, "completed");
+      try {
+        await sendAllSetEmail(job);
+      } catch (err) {
+        console.error("all-set email failed for", job.jobId, err);
+      }
     }
   } catch (err) {
     console.error("signwell webhook error", err);
