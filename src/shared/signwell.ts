@@ -5,6 +5,7 @@
 import type { Job } from "./types";
 
 const API_URL = "https://www.signwell.com/api/v1/document_templates/documents";
+const DOCS_URL = "https://www.signwell.com/api/v1/documents";
 
 function apiKey(): string {
   const k = process.env.SIGNWELL_API_KEY;
@@ -89,4 +90,26 @@ export async function createLoeDocument(job: Job): Promise<LoeResult> {
     documentId: data.id,
     signingUrl: recipient.embedded_signing_url || recipient.signing_url,
   };
+}
+
+// Download the completed (signed) document PDF. Handles both response shapes:
+// the PDF streamed directly, or JSON pointing at a file URL.
+export async function getSignedLoePdf(documentId: string): Promise<Buffer> {
+  const res = await fetch(
+    `${DOCS_URL}/${encodeURIComponent(documentId)}/completed_pdf`,
+    { headers: { "X-Api-Key": apiKey() } },
+  );
+  if (!res.ok) {
+    throw new Error(`signwell completed_pdf failed: ${res.status} ${await res.text()}`);
+  }
+  const ctype = res.headers.get("content-type") || "";
+  if (ctype.includes("application/json")) {
+    const data: any = await res.json();
+    const url = data.file_url || data.url || data.pdf_url;
+    if (!url) throw new Error("signwell completed_pdf: no file url in response");
+    const file = await fetch(url);
+    if (!file.ok) throw new Error(`signwell pdf download failed: ${file.status}`);
+    return Buffer.from(await file.arrayBuffer());
+  }
+  return Buffer.from(await res.arrayBuffer());
 }

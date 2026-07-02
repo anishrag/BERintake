@@ -373,6 +373,7 @@ Resources:
       Timeout: 60
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
         - Statement:
             - Effect: Allow
               Action: [ses:SendEmail, ses:SendRawEmail]
@@ -430,6 +431,7 @@ Resources:
       Handler: src/handlers/signwellWebhook.handler
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
         - Statement:
             - Effect: Allow
               Action: [ses:SendEmail, ses:SendRawEmail]

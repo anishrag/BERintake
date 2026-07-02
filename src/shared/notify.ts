@@ -1,9 +1,56 @@
 // Client-facing notifications. Sent automatically when a job becomes
 // quote_sent (Telegram /newclient, partner approval, or web admin).
 
-import { sendEmail } from "./email";
+import {
+  type Attachment,
+  sendEmail,
+  sendEmailWithAttachments,
+} from "./email";
 import { clientLink } from "./jobs";
+import { ensureInvoiceForJob, getInvoicePdf } from "./qbInvoice";
+import { getSignedLoePdf } from "./signwell";
 import type { Job } from "./types";
+
+// Best-effort attachment fetchers — never let a missing PDF block the email.
+async function invoiceAttachment(job: Job): Promise<Attachment | null> {
+  try {
+    const inv = await ensureInvoiceForJob(job);
+    return { filename: "invoice.pdf", content: await getInvoicePdf(inv.id) };
+  } catch (err) {
+    console.error("could not attach invoice for", job.jobId, err);
+    return null;
+  }
+}
+
+async function signedLoeAttachment(job: Job): Promise<Attachment | null> {
+  const documentId = job.loe?.documentId;
+  if (!documentId) return null;
+  try {
+    return {
+      filename: "letter-of-engagement.pdf",
+      content: await getSignedLoePdf(documentId),
+    };
+  } catch (err) {
+    console.error("could not attach signed LoE for", job.jobId, err);
+    return null;
+  }
+}
+
+// Send with attachments when there are any, otherwise a plain email.
+async function deliver(opts: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  attachments: Attachment[];
+}): Promise<void> {
+  if (opts.attachments.length) {
+    await sendEmailWithAttachments(opts);
+  } else {
+    const { to, subject, text, html } = opts;
+    await sendEmail({ to, subject, text, html });
+  }
+}
 
 const PROPERTY_LABELS: Record<string, string> = {
   apartment: "Apartment",
@@ -63,11 +110,22 @@ Cannygreen`;
   <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
 </div>`;
 
-  await sendEmail({
+  // Always attach the signed letter of engagement. Attach the invoice too, but
+  // only if the LoE-nudge email (#2, which carries it) wasn't sent — so the
+  // client never gets the invoice twice.
+  const attachments: Attachment[] = [];
+  const loe = await signedLoeAttachment(job);
+  if (loe) attachments.push(loe);
+  if (!job.sentEmails?.includes("loe_nudge")) {
+    const inv = await invoiceAttachment(job);
+    if (inv) attachments.push(inv);
+  }
+  await deliver({
     to: job.client.email,
     subject: "You're all set — see you on the day | Cannygreen BER",
     text,
     html,
+    attachments,
   });
 }
 
@@ -149,11 +207,14 @@ Cannygreen`;
   <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
 </div>`;
 
-  await sendEmail({
+  // Attach the invoice — this is the email that carries it before signing.
+  const inv = await invoiceAttachment(job);
+  await deliver({
     to: job.client.email,
     subject: "One step left — sign your letter of engagement | Cannygreen BER",
     text,
     html,
+    attachments: inv ? [inv] : [],
   });
 }
 
