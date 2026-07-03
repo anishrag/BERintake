@@ -7,7 +7,13 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { sendEmail } from "../shared/email";
-import { addSentEmail, clientLink, getJobByToken, setDetails } from "../shared/jobs";
+import {
+  addSentEmail,
+  clientLink,
+  getJobByToken,
+  isFormLocked,
+  setDetails,
+} from "../shared/jobs";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -30,6 +36,7 @@ export const handler = async (
 
   const job = await getJobByToken(token);
   if (!job || job.status === "discarded") return json(404, { error: "not found" });
+  if (isFormLocked(job)) return json(409, { error: "completed" });
 
   const details =
     body.details && typeof body.details === "object"

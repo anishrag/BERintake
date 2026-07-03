@@ -190,6 +190,35 @@ export async function getJobById(jobId: string): Promise<Job | undefined> {
   return res.Item as Job | undefined;
 }
 
+// "YYYY-MM-DD" for a date in Irish local time (Europe/Dublin).
+function dublinDate(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Dublin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/** The client has signed the LoE — the booking form is now read-only. */
+export function isFormLocked(job: Job): boolean {
+  return job.loe?.status === "completed";
+}
+
+/**
+ * True once the client is fully done (LoE signed + invoice sent) AND the survey
+ * day has passed — the whole magic link then stops working. "Survey day passed"
+ * = the current Irish date is past the appointment's Irish date, so the link
+ * lives through the whole survey day and dies at the following midnight.
+ */
+export function isLinkExpired(job: Job): boolean {
+  if (job.loe?.status !== "completed") return false;
+  if (!job.invoice?.id) return false;
+  const start = (job.booking as { start?: string } | undefined)?.start;
+  if (!start) return false;
+  return dublinDate(new Date()) > dublinDate(new Date(start));
+}
+
 export async function getJobByToken(token: string): Promise<Job | undefined> {
   const res = await ddb.send(
     new QueryCommand({
@@ -201,7 +230,10 @@ export async function getJobByToken(token: string): Promise<Job | undefined> {
       Limit: 1,
     }),
   );
-  return res.Items?.[0] as Job | undefined;
+  const job = res.Items?.[0] as Job | undefined;
+  // An expired link reads as "not found" everywhere (kills the PII read too).
+  if (job && isLinkExpired(job)) return undefined;
+  return job;
 }
 
 export async function setJobStatus(

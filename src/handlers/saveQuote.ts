@@ -5,7 +5,7 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
-import { getJobByToken, setQuote } from "../shared/jobs";
+import { getJobByToken, isFormLocked, setQuote } from "../shared/jobs";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -30,6 +30,7 @@ export const handler = async (
   if (!job || job.status === "discarded") {
     return json(404, { error: "not found" });
   }
+  if (isFormLocked(job)) return json(409, { error: "completed" });
 
   const propertyType =
     typeof body.propertyType === "string" ? body.propertyType : undefined;
