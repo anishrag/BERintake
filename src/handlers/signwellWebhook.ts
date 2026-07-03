@@ -1,6 +1,7 @@
 // POST /signwell/webhook — SignWell posts document lifecycle events here.
 // On `document_completed` we mark the job's letter of engagement signed.
 
+import { timingSafeEqual } from "node:crypto";
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
@@ -9,10 +10,30 @@ import { findJobByLoeDocId, setLoeStatus } from "../shared/jobs";
 import { sendAllSetEmail } from "../shared/notify";
 
 const ok = (): APIGatewayProxyResultV2 => ({ statusCode: 200, body: "ok" });
+const unauthorized = (): APIGatewayProxyResultV2 => ({
+  statusCode: 401,
+  body: "unauthorized",
+});
+
+// Constant-time equality; false if either side is empty (fail closed).
+function secretsMatch(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ba.length === bb.length && timingSafeEqual(ba, bb);
+}
 
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  // Authenticate: the SignWell callback URL carries a secret token (?t=…) that
+  // only SignWell has. Reject anything without the right token (fail closed if
+  // the token env var is unset).
+  if (!secretsMatch(event.queryStringParameters?.t, process.env.SIGNWELL_WEBHOOK_TOKEN)) {
+    console.warn("signwell webhook rejected — missing/invalid token");
+    return unauthorized();
+  }
+
   let payload: any;
   try {
     payload = event.body ? JSON.parse(event.body) : {};

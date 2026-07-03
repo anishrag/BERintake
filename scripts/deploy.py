@@ -64,7 +64,8 @@ read_kv(".env", {"REACT_APP_GOOGLE_MAPS_API_KEY": "GoogleMapsApiKey",
 read_kv("quickbooks.env", {"QB_CLIENT_ID": "QbClientId",
                            "QB_CLIENT_SECRET": "QbClientSecret"})
 read_kv("signwell.env", {"SIGNWELL_API_KEY": "SignWellApiKey",
-                         "SIGNWELL_TEMPLATE_ID": "SignWellTemplateId"})
+                         "SIGNWELL_TEMPLATE_ID": "SignWellTemplateId",
+                         "SIGNWELL_WEBHOOK_TOKEN": "SignWellWebhookToken"})
 read_kv("turnstile.env", {"TURNSTILE_SECRET": "TurnstileSecret"})
 # Optional — Telegram bot secrets for a from-scratch deploy.
 read_kv("telegram.env", {"TELEGRAM_BOT_TOKEN": "TelegramBotToken",

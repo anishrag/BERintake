@@ -78,6 +78,11 @@ Parameters:
     NoEcho: true
     Default: ""
     Description: SignWell API key (X-Api-Key).
+  SignWellWebhookToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Secret token in the SignWell callback URL (?t=…) — authenticates the webhook.
   SignWellTemplateId:
     Type: String
     Default: ""
@@ -143,6 +148,7 @@ Globals:
         QB_AUTH_TABLE: !Ref QbAuthTable
         QB_TAX_CODE_ID: !Ref QbTaxCodeId
         SIGNWELL_API_KEY: !Ref SignWellApiKey
+        SIGNWELL_WEBHOOK_TOKEN: !Ref SignWellWebhookToken
         SIGNWELL_TEMPLATE_ID: !Ref SignWellTemplateId
         SIGNWELL_PLACEHOLDER: !Ref SignWellPlaceholder
         SIGNWELL_TEST_MODE: !Ref SignWellTestMode
