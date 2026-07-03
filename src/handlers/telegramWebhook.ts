@@ -5,6 +5,7 @@
 // echoes the sender's chat id so you can lock it. Once set, only that chat
 // may use it.
 
+import { timingSafeEqual } from "node:crypto";
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
@@ -40,10 +41,34 @@ import {
 
 // Telegram retries on non-200, so we always return 200 even on internal errors.
 const ok = (): APIGatewayProxyResultV2 => ({ statusCode: 200, body: "ok" });
+const unauthorized = (): APIGatewayProxyResultV2 => ({
+  statusCode: 401,
+  body: "unauthorized",
+});
+
+// Constant-time equality; false if either side is empty (fail closed).
+function secretsMatch(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ba.length === bb.length && timingSafeEqual(ba, bb);
+}
 
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  // Authenticate: Telegram sends the configured secret_token on every request as
+  // this header. Reject anything else (fail closed if the env var is unset).
+  if (
+    !secretsMatch(
+      event.headers?.["x-telegram-bot-api-secret-token"],
+      process.env.TELEGRAM_WEBHOOK_SECRET,
+    )
+  ) {
+    console.warn("telegram webhook rejected — missing/invalid secret token");
+    return unauthorized();
+  }
+
   let update: any;
   try {
     update = event.body ? JSON.parse(event.body) : {};

@@ -7,6 +7,11 @@ Parameters:
     Type: String
     NoEcho: true
     Description: Bot token from @BotFather.
+  TelegramWebhookSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: setWebhook secret_token — Telegram sends it as X-Telegram-Bot-Api-Secret-Token; authenticates the webhook.
   AllowedChatId:
     Type: String
     Default: ""
@@ -131,6 +136,7 @@ Globals:
         BOT_STATE_TABLE: !Ref BotStateTable
         HOLDS_TABLE: !Ref HoldsTable
         TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
+        TELEGRAM_WEBHOOK_SECRET: !Ref TelegramWebhookSecret
         ALLOWED_CHAT_ID: !Ref AllowedChatId
         PARTNER_ACCESS_KEY: !Ref PartnerAccessKey
         TURNSTILE_SECRET: !Ref TurnstileSecret

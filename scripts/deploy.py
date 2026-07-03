@@ -69,6 +69,7 @@ read_kv("signwell.env", {"SIGNWELL_API_KEY": "SignWellApiKey",
 read_kv("turnstile.env", {"TURNSTILE_SECRET": "TurnstileSecret"})
 # Optional — Telegram bot secrets for a from-scratch deploy.
 read_kv("telegram.env", {"TELEGRAM_BOT_TOKEN": "TelegramBotToken",
+                         "TELEGRAM_WEBHOOK_SECRET": "TelegramWebhookSecret",
                          "PARTNER_ACCESS_KEY": "PartnerAccessKey",
                          "ALLOWED_CHAT_ID": "AllowedChatId"})
 
