@@ -38,7 +38,10 @@ export const handler = async (
   await setDetails(job.jobId, details);
 
   let emailed = false;
-  if (body.email === true) {
+  // Cap the resume email to once per job — the details always save (above), but
+  // the email only sends once, so /details can't be used to bomb an inbox.
+  const alreadyEmailed = job.sentEmails?.includes("save_for_later");
+  if (body.email === true && !alreadyEmailed) {
     const name = job.client.name.split(" ")[0];
     const link = clientLink(job.token);
     try {
