@@ -7,6 +7,7 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { sendEmail } from "../shared/email";
+import { escapeHtml } from "../shared/html";
 import {
   addSentEmail,
   clientLink,
@@ -64,7 +65,7 @@ Note: your assessment is not booked until you submit the form.
 
 Kind regards,
 Anish`,
-        html: `<p>Hi ${name},</p>
+        html: `<p>Hi ${escapeHtml(name)},</p>
 <p>Your details are saved. When you're ready, open this link to finish booking your BER assessment:<br>
 <a href="${link}">${link}</a></p>
 <p><em>Note: your assessment is not booked until you submit the form.</em></p>

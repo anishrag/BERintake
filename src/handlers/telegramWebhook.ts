@@ -18,6 +18,7 @@ import {
   setState,
 } from "../shared/botState";
 import { createBookedEvent } from "../shared/calendar";
+import { escapeHtml } from "../shared/html";
 import { computeQuotePricing } from "../shared/pricing";
 import {
   clientLink,
@@ -215,7 +216,7 @@ async function advance(
         await sendQuoteRequestEmail(job);
         await tgSend(
           chatId,
-          `✅ Quote created for <b>${job.client.name}</b> — quote email sent to ${job.client.email}.\n\nClient link:\n${clientLink(job.token)}`,
+          `✅ Quote created for <b>${escapeHtml(job.client.name)}</b> — quote email sent to ${escapeHtml(job.client.email)}.\n\nClient link:\n${clientLink(job.token)}`,
         );
         return;
       }
@@ -338,8 +339,8 @@ async function createPreAgreedJob(
 
   await tgSend(
     chatId,
-    `✅ Booking created for <b>${job.client.name}</b> (${propertyType}${price != null ? `, €${price}` : ""}).${bookingLine}\n` +
-      `Email sent to ${job.client.email}.\n\nClient link:\n${clientLink(job.token)}`,
+    `✅ Booking created for <b>${escapeHtml(job.client.name)}</b> (${propertyType}${price != null ? `, €${price}` : ""}).${bookingLine}\n` +
+      `Email sent to ${escapeHtml(job.client.email)}.\n\nClient link:\n${clientLink(job.token)}`,
   );
 }
 
@@ -362,7 +363,7 @@ async function handleCallback(cb: any): Promise<void> {
       await tgEditText(
         chatId,
         messageId,
-        `✅ Approved — quote email sent to <b>${job.client.name}</b> (${job.client.email}).\n${clientLink(job.token)}`,
+        `✅ Approved — quote email sent to <b>${escapeHtml(job.client.name)}</b> (${escapeHtml(job.client.email)}).\n${clientLink(job.token)}`,
       );
     }
   } else if (action === "discard") {
@@ -372,7 +373,7 @@ async function handleCallback(cb: any): Promise<void> {
       await tgEditText(
         chatId,
         messageId,
-        `🗑 Discarded job for ${job.client.name}.`,
+        `🗑 Discarded job for ${escapeHtml(job.client.name)}.`,
       );
     }
   } else {

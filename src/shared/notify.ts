@@ -6,6 +6,7 @@ import {
   sendEmail,
   sendEmailWithAttachments,
 } from "./email";
+import { escapeHtml } from "./html";
 import { clientLink } from "./jobs";
 import { ensureInvoiceForJob, getInvoicePdf } from "./qbInvoice";
 import { getSignedLoePdf } from "./signwell";
@@ -102,7 +103,7 @@ Anish
 Cannygreen`;
 
   const html = `<div style="${SHELL}">
-  <p>Hi ${firstName},</p>
+  <p>Hi ${escapeHtml(firstName)},</p>
   <p>You're <strong>all set</strong> — thank you for booking your BER assessment${when ? ` for <strong>${when}</strong>` : ""}.</p>
   <p>That's everything sorted from your side. To see what to expect on the day, have a look at our website:<br>
   <a href="${website}" style="color:#2e7d32">${website}</a></p>
@@ -160,9 +161,9 @@ Anish
 Cannygreen`;
 
   const html = `<div style="${SHELL}">
-  <p>Hi ${firstName},</p>
+  <p>Hi ${escapeHtml(firstName)},</p>
   <p>Thanks for your enquiry with Cannygreen.</p>
-  <p><strong>${priceLine}</strong></p>
+  <p><strong>${escapeHtml(priceLine)}</strong></p>
   <p>You started booking but didn't finish — no problem. When you're ready, just pick up where you left off:</p>
   <p style="text-align:center;margin:28px 0">
     <a href="${link}" style="${BTN}">Finish my booking</a>
@@ -198,7 +199,7 @@ Anish
 Cannygreen`;
 
   const html = `<div style="${SHELL}">
-  <p>Hi ${firstName},</p>
+  <p>Hi ${escapeHtml(firstName)},</p>
   <p>Your BER assessment is <strong>booked</strong>${when ? ` for <strong>${when}</strong>` : ""} — thank you.</p>
   <p>There's one last step to confirm it: please read and sign your <strong>letter of engagement</strong>. It only takes a minute:</p>
   <p style="text-align:center;margin:28px 0">
@@ -254,7 +255,7 @@ Anish
 Cannygreen`;
 
   const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#222;max-width:560px">
-  <p>Hi ${firstName},</p>
+  <p>Hi ${escapeHtml(firstName)},</p>
   <p>Thanks for arranging your BER assessment${when ? ` for <strong>${when}</strong>` : ""}.</p>
   <p>To confirm your booking, please open the link below to add a few property details, pay, and sign the letter of engagement:</p>
   <p style="text-align:center;margin:28px 0">
@@ -300,7 +301,7 @@ Anish
 Cannygreen`;
 
   const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#222;max-width:560px">
-  <p>Hi ${firstName},</p>
+  <p>Hi ${escapeHtml(firstName)},</p>
 
   <p>Thank you for requesting a BER assessment quote.</p>
 

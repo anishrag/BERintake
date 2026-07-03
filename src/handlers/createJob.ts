@@ -6,6 +6,7 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
+import { escapeHtml } from "../shared/html";
 import { clientLink, createJob } from "../shared/jobs";
 import { sendQuoteRequestEmail } from "../shared/notify";
 import { allowRequest, clientIp } from "../shared/rateLimit";
@@ -79,15 +80,15 @@ export const handler = async (
 
   if (job.status === "pending_review") {
     const who = job.partnerName
-      ? `partner <b>${job.partnerName}</b>`
+      ? `partner <b>${escapeHtml(job.partnerName)}</b>`
       : "a partner";
     await notifyOwner(
       `🆕 New job from ${who}\n\n` +
-        `<b>${job.client.name}</b>\n` +
-        `✉️ ${job.client.email}\n` +
-        `📞 ${job.client.phone ?? "no phone"}\n` +
-        `📍 ${job.client.eircode}` +
-        (job.note ? `\n\n📝 ${job.note}` : ""),
+        `<b>${escapeHtml(job.client.name)}</b>\n` +
+        `✉️ ${escapeHtml(job.client.email)}\n` +
+        `📞 ${escapeHtml(job.client.phone ?? "no phone")}\n` +
+        `📍 ${escapeHtml(job.client.eircode)}` +
+        (job.note ? `\n\n📝 ${escapeHtml(job.note)}` : ""),
       {
         inline_keyboard: [
           [
