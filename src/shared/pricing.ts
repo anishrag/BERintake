@@ -197,6 +197,11 @@ function routingKey(eircode: string): string {
   return eircode.replace(/\s+/g, "").toUpperCase().slice(0, 3);
 }
 
+/** Whether this eircode needs a (paid) geocode rather than a routing-key lookup. */
+export function needsGeocode(eircode: string): boolean {
+  return GEOCODE_KEYS.has(routingKey(eircode));
+}
+
 /** Zone from the routing key, or undefined if it needs a precise geocode. */
 function zoneFromRoutingKey(eircode: string): ServiceArea | undefined {
   const key = routingKey(eircode);

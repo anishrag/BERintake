@@ -7,6 +7,11 @@ import type {
 } from "aws-lambda";
 import { getJobByToken } from "../shared/jobs";
 import { ensureInvoiceForJob } from "../shared/qbInvoice";
+import { allowRequest, clientIp } from "../shared/rateLimit";
+
+// Only mint a QB invoice once the client has committed to a slot (held it) or
+// booked — stops a bare token from creating QuickBooks junk.
+const BOOKED_STATUSES = ["booked", "paid", "signed", "confirmed", "pulled"];
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -20,8 +25,15 @@ export const handler = async (
   const token = event.pathParameters?.token;
   if (!token) return json(400, { error: "missing token" });
 
+  if (!(await allowRequest(clientIp(event), "invoice", 20, 60))) {
+    return json(429, { error: "rate-limited" });
+  }
+
   const job = await getJobByToken(token);
   if (!job || job.status === "discarded") return json(404, { error: "not found" });
+  if (!job.hold && !BOOKED_STATUSES.includes(job.status)) {
+    return json(409, { error: "not-ready" });
+  }
 
   try {
     const inv = await ensureInvoiceForJob(job);

@@ -8,6 +8,7 @@ import type {
 } from "aws-lambda";
 import { clientLink, createJob } from "../shared/jobs";
 import { sendQuoteRequestEmail } from "../shared/notify";
+import { allowRequest, clientIp } from "../shared/rateLimit";
 import { notifyOwner } from "../shared/telegram";
 import { verifyTurnstile } from "../shared/turnstile";
 import type { JobSource } from "../shared/types";
@@ -21,6 +22,10 @@ const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  if (!(await allowRequest(clientIp(event), "createjob", 5, 60))) {
+    return json(429, { error: "rate-limited" });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = event.body ? JSON.parse(event.body) : {};

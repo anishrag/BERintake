@@ -135,6 +135,9 @@ Globals:
         JOBS_TABLE: !Ref JobsTable
         BOT_STATE_TABLE: !Ref BotStateTable
         HOLDS_TABLE: !Ref HoldsTable
+        RATE_LIMIT_TABLE: !Ref RateLimitTable
+        GEOCODE_CACHE_TABLE: !Ref GeocodeCacheTable
+        GEOCODE_DAILY_LIMIT: "1000"
         TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
         TELEGRAM_WEBHOOK_SECRET: !Ref TelegramWebhookSecret
         ALLOWED_CHAT_ID: !Ref AllowedChatId
@@ -217,6 +220,32 @@ Resources:
       KeySchema:
         - { AttributeName: id, KeyType: HASH }
 
+  # Per-IP rate-limit counters (one item per ip+window, TTL'd).
+  RateLimitTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  # Geocode cache (eircode -> zone) + the per-day geocode budget counter, TTL'd.
+  GeocodeCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
   # Per-job BER assets: satellite.jpg (written at intake), and data.json +
   # photos/* (pushed by the tablet on completion). Private; the tablet only ever
   # reaches it through short-lived presigned URLs.
@@ -243,6 +272,7 @@ Resources:
       Handler: src/handlers/createJob.handler
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref RateLimitTable }
         - Statement:
             - Effect: Allow
               Action: [ses:SendEmail, ses:SendRawEmail]
@@ -261,6 +291,9 @@ Resources:
         EntryPoints: [src/handlers/zoneLookup.ts]
     Properties:
       Handler: src/handlers/zoneLookup.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref RateLimitTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref GeocodeCacheTable }
       Events:
         Get:
           Type: HttpApi
@@ -427,6 +460,7 @@ Resources:
       Handler: src/handlers/loe.handler
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref RateLimitTable }
       Events:
         Post:
           Type: HttpApi
@@ -465,6 +499,7 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref RateLimitTable }
       Events:
         Post:
           Type: HttpApi
