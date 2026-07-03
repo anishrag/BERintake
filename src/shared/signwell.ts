@@ -2,6 +2,7 @@
 // prefilled with the job's data, and return an embedded signing URL.
 // Template field API IDs must match those set in the SignWell template.
 
+import { resolveJobPrice } from "./jobs";
 import type { Job } from "./types";
 
 const API_URL = "https://www.signwell.com/api/v1/document_templates/documents";
@@ -39,13 +40,9 @@ export async function createLoeDocument(job: Job): Promise<LoeResult> {
   const testMode = process.env.SIGNWELL_TEST_MODE !== "false";
 
   const kd: any = job.keyDetails || {};
-  const q: any = job.quote || {};
-  const price =
-    typeof q.price === "number"
-      ? q.price
-      : job.quotePrices && typeof q.propertyType === "string"
-        ? job.quotePrices[q.propertyType]
-        : undefined;
+  // Authoritative price (agreed price, else server zone price) — never the
+  // client-supplied one.
+  const price = await resolveJobPrice(job);
 
   const templateFields = [
     { api_id: "client_name", value: job.client.name },

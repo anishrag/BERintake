@@ -74,6 +74,7 @@ export interface Job {
   // Computed once from the eircode (geocode → zone), cached for the quote page.
   serviceArea?: string;
   quotePrices?: Record<string, number>; // house type -> price for this zone
+  agreedPrice?: number; // trusted owner/contractor-set price; overrides the zone price
   quote?: Record<string, unknown>;
   booking?: Record<string, unknown>;
   payment?: Record<string, unknown>;

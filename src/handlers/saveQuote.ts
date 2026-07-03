@@ -31,14 +31,15 @@ export const handler = async (
     return json(404, { error: "not found" });
   }
 
+  const propertyType =
+    typeof body.propertyType === "string" ? body.propertyType : undefined;
   const quote = {
-    propertyType:
-      typeof body.propertyType === "string" ? body.propertyType : undefined,
+    propertyType,
     purpose: typeof body.purpose === "string" ? body.purpose : undefined,
     bedrooms: typeof body.bedrooms === "number" ? body.bedrooms : undefined,
-    serviceArea:
-      typeof body.serviceArea === "string" ? body.serviceArea : undefined,
-    price: typeof body.price === "number" ? body.price : undefined,
+    // Server-authoritative — ignore any client-supplied price/serviceArea.
+    serviceArea: job.serviceArea,
+    price: propertyType ? job.quotePrices?.[propertyType] : undefined,
     quotedAt: new Date().toISOString(),
   };
 

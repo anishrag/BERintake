@@ -10,6 +10,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { JOBS_TABLE, ddb } from "./db";
 import { newJobId, newToken } from "./ids";
+import { computeQuotePricing, type HouseType } from "./pricing";
 import { fetchSatelliteImage } from "./satellite";
 import { jobPrefix, putObject } from "./s3";
 import type {
@@ -393,6 +394,44 @@ export async function addSentEmail(jobId: string, key: string): Promise<void> {
       ExpressionAttributeValues: { ":empty": [], ":k": [key], ":u": now },
     }),
   );
+}
+
+/** Set a trusted, agreed price (owner via Telegram / contractor table). */
+export async function setAgreedPrice(jobId: string, price: number): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "SET agreedPrice = :p, updatedAt = :u",
+      ExpressionAttributeValues: { ":p": price, ":u": new Date().toISOString() },
+    }),
+  );
+}
+
+/**
+ * The authoritative price for a job, for the invoice and the LoE fee. Never
+ * trusts a client-supplied price:
+ *   1. an explicitly agreed price (owner/contractor) wins;
+ *   2. otherwise the server-computed zone price for the eircode + property type
+ *      (recomputed and cached if not already stored);
+ *   3. otherwise undefined (caller treats as "no price").
+ */
+export async function resolveJobPrice(job: Job): Promise<number | undefined> {
+  if (typeof job.agreedPrice === "number") return job.agreedPrice;
+
+  const propertyType = (job.quote as { propertyType?: string } | undefined)
+    ?.propertyType;
+  if (!propertyType) return undefined;
+
+  const cached = job.quotePrices?.[propertyType];
+  if (typeof cached === "number") return cached;
+
+  const eircode = job.client?.eircode;
+  if (!eircode) return undefined;
+  const computed = await computeQuotePricing(eircode);
+  if (!computed) return undefined;
+  await setQuotePricing(job.jobId, computed.serviceArea, computed.prices);
+  return computed.prices[propertyType as HouseType];
 }
 
 export function clientLink(token: string): string {

@@ -22,6 +22,7 @@ import {
   clientLink,
   createJob,
   getJobById,
+  setAgreedPrice,
   setBooking,
   setJobStatus,
   setQuote,
@@ -270,7 +271,10 @@ async function createPreAgreedJob(
   const propertyType = sizeToPropertyType(draft.size!)!;
   const dt = parseDateTime(draft.datetime!)!;
 
-  let price = draft.price;
+  // An explicitly entered price is a trusted override; skipping it falls back
+  // to the zone price (for display only — resolveJobPrice recomputes it).
+  const agreed = draft.price;
+  let price = agreed;
   if (price == null) {
     const computed = await computeQuotePricing(draft.eircode!);
     if (computed) price = (computed.prices as any)[propertyType];
@@ -286,6 +290,7 @@ async function createPreAgreedJob(
     price,
     quotedAt: new Date().toISOString(),
   });
+  if (agreed != null) await setAgreedPrice(job.jobId, agreed);
 
   const summary = `BOOKED: ${job.client.name} | ${job.client.eircode} | ${job.client.email}`;
   let bookingLine = "";

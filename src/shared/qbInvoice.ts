@@ -1,7 +1,7 @@
 // Build QuickBooks invoices for a job: ensure a Customer + a "BER Assessment"
 // service item exist, then create the invoice and fetch its PDF.
 
-import { setInvoice } from "./jobs";
+import { resolveJobPrice, setInvoice } from "./jobs";
 import { qbFetch } from "./quickbooks";
 import type { ClientDetails, Job } from "./types";
 
@@ -84,22 +84,13 @@ async function ensureBerItem(): Promise<string> {
   return created.Item.Id;
 }
 
-function jobPrice(job: Job): number | undefined {
-  const q: any = job.quote || {};
-  if (typeof q.price === "number") return q.price;
-  if (job.quotePrices && typeof q.propertyType === "string") {
-    return job.quotePrices[q.propertyType];
-  }
-  return undefined;
-}
-
 /** Create the invoice for a job if it doesn't have one yet; returns its metadata. */
 export async function ensureInvoiceForJob(
   job: Job,
 ): Promise<{ id: string; total?: number; docNumber?: string }> {
   if (job.invoice?.id) return job.invoice;
 
-  const price = jobPrice(job);
+  const price = await resolveJobPrice(job);
   if (!price) throw new Error("no-price");
 
   const customerId = await ensureCustomer(job.client);
