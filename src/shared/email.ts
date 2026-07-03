@@ -6,8 +6,15 @@ import {
   SendRawEmailCommand,
   SESClient,
 } from "@aws-sdk/client-ses";
+import { emailFooterHtml, emailFooterText } from "./company";
 
 const ses = new SESClient({});
+
+// Append the company-particulars footer (CRO / Revenue disclosure) to every
+// client-facing email.
+function withFooter(text: string, html: string): { text: string; html: string } {
+  return { text: `${text}\n\n${emailFooterText}`, html: `${html}${emailFooterHtml}` };
+}
 
 export interface Attachment {
   filename: string;
@@ -37,6 +44,7 @@ export async function sendEmail(opts: {
   html: string;
 }): Promise<void> {
   const { to, subject } = route(opts.to, opts.subject);
+  const body = withFooter(opts.text, opts.html);
   await ses.send(
     new SendEmailCommand({
       Source: fromAddress(),
@@ -44,8 +52,8 @@ export async function sendEmail(opts: {
       Message: {
         Subject: { Data: subject },
         Body: {
-          Text: { Data: opts.text },
-          Html: { Data: opts.html },
+          Text: { Data: body.text },
+          Html: { Data: body.html },
         },
       },
     }),
@@ -63,12 +71,13 @@ export async function sendEmailWithAttachments(opts: {
 }): Promise<void> {
   const from = fromAddress();
   const { to, subject } = route(opts.to, opts.subject);
+  const body = withFooter(opts.text, opts.html);
   const raw = buildMimeMessage({
     from,
     to,
     subject,
-    text: opts.text,
-    html: opts.html,
+    text: body.text,
+    html: body.html,
     attachments: opts.attachments,
   });
   await ses.send(
