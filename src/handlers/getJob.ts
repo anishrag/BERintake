@@ -42,6 +42,7 @@ export const handler = async (
   const view = {
     status: job.status,
     client: job.client,
+    postWorks: job.postWorks ?? false,
     serviceArea: serviceArea ?? null,
     quotePrices: quotePrices ?? null,
     quote: job.quote ?? null,

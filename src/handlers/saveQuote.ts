@@ -6,6 +6,7 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { getJobByToken, isFormLocked, setQuote } from "../shared/jobs";
+import { POST_WORKS_DISCOUNT } from "../shared/pricing";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -34,13 +35,20 @@ export const handler = async (
 
   const propertyType =
     typeof body.propertyType === "string" ? body.propertyType : undefined;
+  const base = propertyType ? job.quotePrices?.[propertyType] : undefined;
+  const price =
+    typeof base === "number"
+      ? job.postWorks
+        ? Math.max(0, base - POST_WORKS_DISCOUNT)
+        : base
+      : undefined;
   const quote = {
     propertyType,
     purpose: typeof body.purpose === "string" ? body.purpose : undefined,
     bedrooms: typeof body.bedrooms === "number" ? body.bedrooms : undefined,
     // Server-authoritative — ignore any client-supplied price/serviceArea.
     serviceArea: job.serviceArea,
-    price: propertyType ? job.quotePrices?.[propertyType] : undefined,
+    price,
     quotedAt: new Date().toISOString(),
   };
 

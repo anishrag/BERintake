@@ -10,7 +10,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { JOBS_TABLE, ddb } from "./db";
 import { newJobId, newToken } from "./ids";
-import { computeQuotePricing, type HouseType } from "./pricing";
+import { POST_WORKS_DISCOUNT, computeQuotePricing, type HouseType } from "./pricing";
 import { fetchSatelliteImage } from "./satellite";
 import { jobPrefix, putObject } from "./s3";
 import type {
@@ -27,6 +27,7 @@ export interface CreateJobInput {
   source: JobSource;
   partnerName?: string;
   note?: string;
+  postWorks?: boolean;
   /** Partner submissions require owner approval before the client is contacted. */
   requireReview: boolean;
 }
@@ -40,6 +41,7 @@ export async function createJob(input: CreateJobInput): Promise<Job> {
     source: input.source,
     partnerName: input.partnerName,
     note: input.note,
+    postWorks: input.postWorks,
     client: input.client,
     createdAt: now,
     updatedAt: now,
@@ -455,15 +457,19 @@ export async function resolveJobPrice(job: Job): Promise<number | undefined> {
     ?.propertyType;
   if (!propertyType) return undefined;
 
-  const cached = job.quotePrices?.[propertyType];
-  if (typeof cached === "number") return cached;
-
-  const eircode = job.client?.eircode;
-  if (!eircode) return undefined;
-  const computed = await computeQuotePricing(eircode);
-  if (!computed) return undefined;
-  await setQuotePricing(job.jobId, computed.serviceArea, computed.prices);
-  return computed.prices[propertyType as HouseType];
+  let base = job.quotePrices?.[propertyType];
+  if (typeof base !== "number") {
+    const eircode = job.client?.eircode;
+    if (!eircode) return undefined;
+    const computed = await computeQuotePricing(eircode);
+    if (!computed) return undefined;
+    await setQuotePricing(job.jobId, computed.serviceArea, computed.prices);
+    base = computed.prices[propertyType as HouseType];
+  }
+  if (typeof base !== "number") return undefined;
+  // Post-works BER: a fixed discount off the zone price (server-side, so the
+  // amount can't be tampered — the client only claims eligibility, we verify).
+  return job.postWorks ? Math.max(0, base - POST_WORKS_DISCOUNT) : base;
 }
 
 export function clientLink(token: string): string {

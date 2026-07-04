@@ -75,6 +75,7 @@ export const handler = async (
     source,
     partnerName: source === "partner" ? partnerName : undefined,
     note,
+    postWorks: body.postWorks === true,
     requireReview,
   });
 

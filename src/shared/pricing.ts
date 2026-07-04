@@ -6,6 +6,9 @@
 import { A98_PRIMARY, A98_SECONDARY } from "./a98Zones";
 
 export type HouseType = "apartment" | "small-house" | "large-house";
+
+// Discount for a post-works BER where we did the pre-works BER within 6 months.
+export const POST_WORKS_DISCOUNT = 200;
 export type ServiceArea = "primary" | "secondary" | "tertiary" | "outside";
 
 type Tier = Record<HouseType, number> & { default: number };
