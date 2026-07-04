@@ -67,6 +67,9 @@ read_kv("signwell.env", {"SIGNWELL_API_KEY": "SignWellApiKey",
                          "SIGNWELL_TEMPLATE_ID": "SignWellTemplateId",
                          "SIGNWELL_WEBHOOK_TOKEN": "SignWellWebhookToken"})
 read_kv("turnstile.env", {"TURNSTILE_SECRET": "TurnstileSecret"})
+# Shared key the BER_APP tablet sends as x-surveyor-key (cloud sync + bug-report
+# upload). Blank/absent => /surveyor/* endpoints reject all requests.
+read_kv("surveyor.env", {"SURVEYOR_ACCESS_KEY": "SurveyorAccessKey"})
 # Optional — Telegram bot secrets for a from-scratch deploy.
 read_kv("telegram.env", {"TELEGRAM_BOT_TOKEN": "TelegramBotToken",
                          "TELEGRAM_WEBHOOK_SECRET": "TelegramWebhookSecret",
