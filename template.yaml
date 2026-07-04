@@ -6,6 +6,7 @@ Parameters:
   TelegramBotToken:
     Type: String
     NoEcho: true
+    Default: ""
     Description: Bot token from @BotFather.
   TelegramWebhookSecret:
     Type: String
@@ -19,6 +20,7 @@ Parameters:
   PartnerAccessKey:
     Type: String
     NoEcho: true
+    Default: ""
     Description: Shared secret the partner web form must send to create a job.
   TurnstileSecret:
     Type: String
@@ -137,7 +139,7 @@ Globals:
         HOLDS_TABLE: !Ref HoldsTable
         RATE_LIMIT_TABLE: !Ref RateLimitTable
         GEOCODE_CACHE_TABLE: !Ref GeocodeCacheTable
-        GEOCODE_DAILY_LIMIT: "1000"
+        GEOCODE_DAILY_LIMIT: "50"
         TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
         TELEGRAM_WEBHOOK_SECRET: !Ref TelegramWebhookSecret
         ALLOWED_CHAT_ID: !Ref AllowedChatId
