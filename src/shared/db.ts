@@ -9,3 +9,4 @@ export const ddb = DynamoDBDocumentClient.from(client, {
 
 export const JOBS_TABLE = process.env.JOBS_TABLE!;
 export const BOT_STATE_TABLE = process.env.BOT_STATE_TABLE!;
+export const BUG_REPORTS_TABLE = process.env.BUG_REPORTS_TABLE!;

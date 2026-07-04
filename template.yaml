@@ -165,6 +165,7 @@ Globals:
         SIGNWELL_TEST_MODE: !Ref SignWellTestMode
         ARTIFACTS_BUCKET: !Ref BerArtifactsBucket
         SURVEYOR_ACCESS_KEY: !Ref SurveyorAccessKey
+        BUG_REPORTS_TABLE: !Ref BugReportsTable
 
 Resources:
   JobsTable:
@@ -183,6 +184,26 @@ Resources:
           KeySchema:
             - { AttributeName: token, KeyType: HASH }
           Projection: { ProjectionType: ALL }
+        - IndexName: status-index
+          KeySchema:
+            - { AttributeName: status, KeyType: HASH }
+            - { AttributeName: createdAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  # Bug reports uploaded by the BER_APP tablet (audio + JSON state dump +
+  # metadata). Queried by status (open/fixed) via status-index for the at-home
+  # triage tool.
+  BugReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: bugReportId, AttributeType: S }
+        - { AttributeName: status, AttributeType: S }
+        - { AttributeName: createdAt, AttributeType: S }
+      KeySchema:
+        - { AttributeName: bugReportId, KeyType: HASH }
+      GlobalSecondaryIndexes:
         - IndexName: status-index
           KeySchema:
             - { AttributeName: status, KeyType: HASH }
@@ -658,6 +679,39 @@ Resources:
           Type: HttpApi
           Properties: { Path: "/surveyor/jobs/{jobId}/ber/complete", Method: POST }
 
+  SurveyorBugReportCreateFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/surveyorBugReportCreate.ts]
+    Properties:
+      Handler: src/handlers/surveyorBugReportCreate.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref BugReportsTable }
+        - S3CrudPolicy: { BucketName: !Ref BerArtifactsBucket }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: /surveyor/bug-reports, Method: POST }
+
+  SurveyorBugReportCompleteFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/surveyorBugReportComplete.ts]
+    Properties:
+      Handler: src/handlers/surveyorBugReportComplete.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref BugReportsTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/surveyor/bug-reports/{bugReportId}/complete", Method: POST }
+
 Outputs:
   ApiUrl:
     Description: Base URL of the HTTP API.
@@ -668,3 +722,6 @@ Outputs:
   BerArtifactsBucketName:
     Description: S3 bucket holding per-job BER assets (satellite image, data.json, photos).
     Value: !Ref BerArtifactsBucket
+  BugReportsTableName:
+    Description: DynamoDB table holding tablet-uploaded bug reports.
+    Value: !Ref BugReportsTable

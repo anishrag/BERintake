@@ -61,6 +61,24 @@ export interface BerResult {
   completedAt: string; // ISO 8601
 }
 
+// A bug report uploaded by the BER_APP tablet: an audio recording + a JSON
+// state dump + metadata. The heavy blobs live in S3 under `bug-reports/{id}/`;
+// this row is the queryable record. Marked "fixed" later from home.
+export interface BugReport {
+  bugReportId: string;
+  createdAt: string; // ISO 8601
+  status: "open" | "fixed";
+  note?: string;
+  berId?: string; // the BER the report was raised against, if any
+  address?: string;
+  appContext?: Record<string, string>; // page / appVersion / deviceModel etc.
+  audioKey?: string; // S3 key of the audio recording (only when hasAudio)
+  stateKey: string; // S3 key of the JSON state dump
+  hasAudio: boolean;
+  uploadedAt?: string; // set when the tablet confirms the blobs are uploaded
+  fixedAt?: string; // set when marked fixed from home
+}
+
 export interface Job {
   jobId: string;
   token: string; // unguessable id used in the client-facing URL
@@ -68,6 +86,7 @@ export interface Job {
   source: JobSource;
   partnerName?: string; // set when source === "partner" (referral tracking)
   note?: string;
+  postWorks?: boolean; // client claims a post-works BER (pre-works done by us <6 months ago) → -€200
   client: ClientDetails;
   // Tentative slot reservation while the client fills the booking form.
   hold?: { eventId: string; holdUntil: string };
