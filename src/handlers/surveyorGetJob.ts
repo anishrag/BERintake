@@ -5,7 +5,7 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
-import { getJobById } from "../shared/jobs";
+import { getJobById, seedFromDetails } from "../shared/jobs";
 import { presignGet } from "../shared/s3";
 import { isSurveyor } from "../shared/surveyorAuth";
 
@@ -29,11 +29,28 @@ export const handler = async (
   const key = job.berSeed?.satelliteImageKey;
   const satelliteImageUrl = key ? await presignGet(key) : null;
 
+  // Fold the client's latest booking-form answers into the seed. Details entered
+  // AFTER booking (e.g. a Telegram-booked job whose client fills the web form
+  // later) live in `keyDetails`, not the seed written at booking — merge them so
+  // the tablet's Key Details screen gets them. Fresh client detail fields win;
+  // the seed's geocoded address + coords + satellite key are preserved.
+  const fromDetails = seedFromDetails(job.keyDetails);
+  const seed = job.berSeed;
+  const berSeed =
+    seed || Object.keys(fromDetails).length
+      ? {
+          ...seed,
+          ...fromDetails,
+          address: seed?.address ?? fromDetails.address ?? job.client.eircode,
+          eircode: seed?.eircode ?? job.client.eircode,
+        }
+      : null;
+
   return json(200, {
     jobId: job.jobId,
     status: job.status,
     client: job.client,
-    berSeed: job.berSeed ?? null,
+    berSeed,
     satelliteImageUrl,
   });
 };
