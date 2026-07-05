@@ -24,6 +24,7 @@ import {
   clientLink,
   createJob,
   getJobById,
+  seedBerFromEircode,
   setAgreedPrice,
   setBooking,
   setJobStatus,
@@ -329,6 +330,15 @@ async function createPreAgreedJob(
       bookedAt: new Date().toISOString(),
     });
     bookingLine = `\n📅 ${ev.start}`;
+    // Seed the BER for the tablet (address, satellite image, property type) —
+    // the web booking flow does this in book.ts; the Telegram flow must too, or
+    // the job reaches the assessor's tablet with no name and no site image.
+    // Best-effort: never fail the booking over the seed.
+    try {
+      await seedBerFromEircode(job, { propertyType });
+    } catch (err) {
+      console.error(`berSeed generation failed for ${job.jobId}`, err);
+    }
   } catch (err) {
     console.error("failed to create calendar event", err);
     bookingLine = "\n⚠️ Couldn't add to calendar — add it manually.";
