@@ -53,7 +53,13 @@ export const handler = async (
   }
 
   // First upload intent — mark it pulled (don't regress an already-assessed job).
-  if (job.status === "confirmed") await setJobStatus(jobId, "pulled");
+  if (
+    job.status === "booked" ||
+    job.status === "signed" ||
+    job.status === "confirmed"
+  ) {
+    await setJobStatus(jobId, "pulled");
+  }
 
   return json(200, { prefix, dataUrl, photoUrls });
 };

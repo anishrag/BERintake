@@ -23,9 +23,14 @@ export const handler = async (
   const job = await getJobByToken(token);
   if (!job || job.status === "discarded") return json(404, { error: "not found" });
 
-  // Idempotent — only confirm + email once.
-  if (job.status === "confirmed") {
-    return json(200, { status: "confirmed", alreadyConfirmed: true });
+  // Idempotent, and only from a committed-but-not-yet-pulled state
+  // (booked/signed). Never regress a job the tablet has already pulled or
+  // assessed, nor re-confirm one.
+  if (job.status !== "booked" && job.status !== "signed") {
+    return json(200, {
+      status: job.status,
+      alreadyConfirmed: job.status === "confirmed",
+    });
   }
 
   // Mark ready for the assessor. The client-facing "you're all set" email is

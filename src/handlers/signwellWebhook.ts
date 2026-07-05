@@ -6,7 +6,7 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
-import { findJobByLoeDocId, setLoeStatus } from "../shared/jobs";
+import { findJobByLoeDocId, setJobStatus, setLoeStatus } from "../shared/jobs";
 import { sendAllSetEmail } from "../shared/notify";
 
 const ok = (): APIGatewayProxyResultV2 => ({ statusCode: 200, body: "ok" });
@@ -53,6 +53,11 @@ export const handler = async (
       // First completion only — SignWell may retry the webhook. Signing is the
       // last online step, so this sends the terminal "you're all set" email.
       await setLoeStatus(job.jobId, "completed");
+      // Reflect the signature in the top-level status too, so a signed job reads
+      // as `signed` regardless of whether the client's browser ever fired the
+      // confirm step. Only advance from `booked` — never regress a job that's
+      // already further along (confirmed/pulled/assessed).
+      if (job.status === "booked") await setJobStatus(job.jobId, "signed");
       try {
         await sendAllSetEmail(job);
       } catch (err) {
