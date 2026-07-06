@@ -324,35 +324,47 @@ async function createPreAgreedJob(
   if (agreed != null) await setAgreedPrice(job.jobId, agreed);
 
   const summary = `BOOKED: ${job.client.name} | ${job.client.eircode} | ${job.client.email}`;
-  let bookingLine = "";
+
+  // The pre-agreed booking hinges on the calendar slot. If it fails, don't send
+  // the client a "complete your booking" email for a booking that isn't real —
+  // discard the half-created job (so it can't linger as a stray quote) and ask
+  // the owner to retry.
+  let ev: Awaited<ReturnType<typeof createBookedEvent>>;
   try {
-    const ev = await createBookedEvent(summary, dt.startNaive, dt.endNaive);
-    // Pre-agreed slot: mark `prebooked`, not `booked`. It becomes `booked` only
-    // once the client completes the survey form (so the deferred LoE nudge and
-    // the assessor pull don't fire before they've done anything).
-    await setBooking(
-      job.jobId,
-      {
-        eventId: ev.id,
-        start: ev.start,
-        end: ev.end,
-        bookedAt: new Date().toISOString(),
-      },
-      "prebooked",
-    );
-    bookingLine = `\n📅 ${ev.start}`;
-    // Seed the BER for the tablet (address, satellite image, property type) —
-    // the web booking flow does this in book.ts; the Telegram flow must too, or
-    // the job reaches the assessor's tablet with no name and no site image.
-    // Best-effort: never fail the booking over the seed.
-    try {
-      await seedBerFromEircode(job, { propertyType });
-    } catch (err) {
-      console.error(`berSeed generation failed for ${job.jobId}`, err);
-    }
+    ev = await createBookedEvent(summary, dt.startNaive, dt.endNaive);
   } catch (err) {
     console.error("failed to create calendar event", err);
-    bookingLine = "\n⚠️ Couldn't add to calendar — add it manually.";
+    await setJobStatus(job.jobId, "discarded");
+    await tgSend(
+      chatId,
+      "❌ Couldn't create the booking — the calendar didn't accept the slot " +
+        "(check the Google Calendar connection). Nothing was sent to the client; " +
+        "please try again.",
+    );
+    return;
+  }
+
+  // Pre-agreed slot: mark `prebooked`, not `booked`. It becomes `booked` only
+  // once the client completes the survey form (so the deferred LoE nudge and the
+  // assessor pull don't fire before they've done anything).
+  await setBooking(
+    job.jobId,
+    {
+      eventId: ev.id,
+      start: ev.start,
+      end: ev.end,
+      bookedAt: new Date().toISOString(),
+    },
+    "prebooked",
+  );
+  // Seed the BER for the tablet (address, satellite image, property type) — the
+  // web booking flow does this in book.ts; the Telegram flow must too, or the
+  // job reaches the assessor's tablet with no name and no site image.
+  // Best-effort: never fail the booking over the seed.
+  try {
+    await seedBerFromEircode(job, { propertyType });
+  } catch (err) {
+    console.error(`berSeed generation failed for ${job.jobId}`, err);
   }
 
   const full = (await getJobById(job.jobId)) ?? job;
@@ -360,7 +372,7 @@ async function createPreAgreedJob(
 
   await tgSend(
     chatId,
-    `✅ Booking created for <b>${escapeHtml(job.client.name || `(name TBC) ${job.client.eircode}`)}</b> (${propertyType}${price != null ? `, €${price}` : ""}).${bookingLine}\n` +
+    `✅ Booking created for <b>${escapeHtml(job.client.name || `(name TBC) ${job.client.eircode}`)}</b> (${propertyType}${price != null ? `, €${price}` : ""}).\n📅 ${ev.start}\n` +
       `Email sent to ${escapeHtml(job.client.email)}.\n\nClient link:\n${clientLink(job.token)}`,
   );
 }
