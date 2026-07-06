@@ -57,7 +57,7 @@ export const handler = async (
     try {
       await sendEmail({
         to: job.client.email,
-        subject: "Finish booking your BER assessment — Cannygreen",
+        subject: "Cannygreen BER - Finish booking your assessment",
         text: `Hi ${name},
 
 Your details are saved. When you're ready, open this link to finish booking your BER assessment:

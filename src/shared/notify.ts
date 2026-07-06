@@ -123,7 +123,7 @@ Cannygreen`;
   }
   await deliver({
     to: job.client.email,
-    subject: "You're all set — see you on the day | Cannygreen BER",
+    subject: "Cannygreen BER - You're all set, see you on the day",
     text,
     html,
     attachments,
@@ -174,7 +174,7 @@ Cannygreen`;
 
   await sendEmail({
     to: job.client.email,
-    subject: "Your BER quote with Cannygreen — a couple of details needed",
+    subject: "Cannygreen BER - Your quote, a couple of details needed",
     text,
     html,
   });
@@ -212,7 +212,7 @@ Cannygreen`;
   const inv = await invoiceAttachment(job);
   await deliver({
     to: job.client.email,
-    subject: "One step left — sign your letter of engagement | Cannygreen BER",
+    subject: "Cannygreen BER - One step left, sign your letter of engagement",
     text,
     html,
     attachments: inv ? [inv] : [],
@@ -264,7 +264,7 @@ Cannygreen`;
 
   await sendEmail({
     to: job.client.email,
-    subject: "A couple of details before your BER assessment — Cannygreen",
+    subject: "Cannygreen BER - A couple of details before your assessment",
     text,
     html,
   });
@@ -325,7 +325,7 @@ Cannygreen`;
 
   await sendEmail({
     to: job.client.email,
-    subject: "Your BER quote with Cannygreen — a couple of details needed",
+    subject: "Cannygreen BER - Your quote, a couple of details needed",
     text,
     html,
   });

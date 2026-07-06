@@ -66,6 +66,7 @@ def read_kv(filename: str, keys: dict[str, str], target: dict[str, str]) -> None
 
 # --- config toggles (non-secret params) ---
 params["QuoteFromEmail"] = os.environ.get("QUOTE_FROM_EMAIL", "anish@cannygreen.com")
+params["QuoteFromName"] = os.environ.get("QUOTE_FROM_NAME", "Anish Raghavan")
 params["TestEmailOverride"] = os.environ.get("TEST_EMAIL_OVERRIDE", "off")
 params["PublicSiteUrl"] = os.environ.get(
     "PUBLIC_SITE_URL", "https://d1ze07dqk0doqs.cloudfront.net"
@@ -76,6 +77,8 @@ if os.environ.get("QB_TAX_CODE_ID"):
     params["QbTaxCodeId"] = os.environ["QB_TAX_CODE_ID"]
 if os.environ.get("QB_OUTLAY_TAX_CODE_ID"):
     params["QbOutlayTaxCodeId"] = os.environ["QB_OUTLAY_TAX_CODE_ID"]
+if os.environ.get("QB_TAX_RATE"):
+    params["QbTaxRate"] = os.environ["QB_TAX_RATE"]
 if os.environ.get("SIGNWELL_TEST_MODE"):
     params["SignWellTestMode"] = os.environ["SIGNWELL_TEST_MODE"]
 
@@ -139,7 +142,9 @@ if not os.environ.get("SKIP_BUILD"):
     if subprocess.run(["sam", "build"], cwd=ROOT).returncode != 0:
         sys.exit("sam build failed")
 
-overrides = [f"ParameterKey={k},ParameterValue={v}" for k, v in params.items()]
+# Quote the value so SAM keeps multi-word values (e.g. "Anish Raghavan") intact
+# instead of splitting them on spaces.
+overrides = [f'ParameterKey={k},ParameterValue="{v}"' for k, v in params.items()]
 cmd = [
     "sam", "deploy",
     "--stack-name", STACK_NAME,

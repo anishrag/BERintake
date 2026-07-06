@@ -20,6 +20,10 @@ Parameters:
     Type: String
     Default: test@cannygreen.com
     Description: Verified SES From address for client quote emails (must be @cannygreen.com).
+  QuoteFromName:
+    Type: String
+    Default: Anish Raghavan
+    Description: Friendly From display name shown in the client's inbox (e.g. "Anish Raghavan").
   TestEmailOverride:
     Type: String
     Default: ""
@@ -49,6 +53,10 @@ Parameters:
     Type: String
     Default: ""
     Description: QuickBooks TaxCode id for the SEAI publishing-fee outlay line (0% / No VAT). Blank = auto-pick a zero/exempt code.
+  QbTaxRate:
+    Type: String
+    Default: "23"
+    Description: Standard VAT rate (percent) applied to the BER survey line; used to derive the net from the VAT-inclusive quoted price.
   SignWellTemplateId:
     Type: String
     Default: ""
@@ -102,6 +110,7 @@ Globals:
         ALLOWED_CHAT_ID: !Ref AllowedChatId
         PUBLIC_SITE_URL: !Ref PublicSiteUrl
         QUOTE_FROM_EMAIL: !Ref QuoteFromEmail
+        QUOTE_FROM_NAME: !Ref QuoteFromName
         TEST_EMAIL_OVERRIDE: !Ref TestEmailOverride
         GOOGLE_CLIENT_ID: !Ref GoogleClientId
         GOOGLE_CALENDAR_ID: !Ref GoogleCalendarId
@@ -110,6 +119,7 @@ Globals:
         QB_AUTH_TABLE: !Ref QbAuthTable
         QB_TAX_CODE_ID: !Ref QbTaxCodeId
         QB_OUTLAY_TAX_CODE_ID: !Ref QbOutlayTaxCodeId
+        QB_TAX_RATE: !Ref QbTaxRate
         SIGNWELL_TEMPLATE_ID: !Ref SignWellTemplateId
         SIGNWELL_PLACEHOLDER: !Ref SignWellPlaceholder
         SIGNWELL_TEST_MODE: !Ref SignWellTestMode

@@ -22,8 +22,16 @@ export interface Attachment {
   contentType?: string; // defaults to application/pdf
 }
 
-function fromAddress(): string {
+// The bare From email (also used as the raw-message envelope sender).
+function fromEmail(): string {
   return process.env.QUOTE_FROM_EMAIL || "test@cannygreen.com";
+}
+
+// The From header with a friendly display name, e.g.
+// "Cannygreen BER <anish@cannygreen.com>". Change the name via QUOTE_FROM_NAME.
+function fromSource(): string {
+  const name = (process.env.QUOTE_FROM_NAME || "Anish Raghavan").trim();
+  return name ? `${name} <${fromEmail()}>` : fromEmail();
 }
 
 // Testing override: when TEST_EMAIL_OVERRIDE is a real address, redirect every
@@ -47,7 +55,7 @@ export async function sendEmail(opts: {
   const body = withFooter(opts.text, opts.html);
   await ses.send(
     new SendEmailCommand({
-      Source: fromAddress(),
+      Source: fromSource(),
       Destination: { ToAddresses: [to] },
       Message: {
         Subject: { Data: subject },
@@ -69,11 +77,10 @@ export async function sendEmailWithAttachments(opts: {
   html: string;
   attachments: Attachment[];
 }): Promise<void> {
-  const from = fromAddress();
   const { to, subject } = route(opts.to, opts.subject);
   const body = withFooter(opts.text, opts.html);
   const raw = buildMimeMessage({
-    from,
+    from: fromSource(),
     to,
     subject,
     text: body.text,
@@ -82,7 +89,7 @@ export async function sendEmailWithAttachments(opts: {
   });
   await ses.send(
     new SendRawEmailCommand({
-      Source: from,
+      Source: fromEmail(),
       Destinations: [to],
       RawMessage: { Data: raw },
     }),
