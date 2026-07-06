@@ -12,12 +12,14 @@
 
 import { addSentEmail, findByStatus } from "../shared/jobs";
 import { sendLoeNudgeEmail, sendQuoteEmail } from "../shared/notify";
+import { hydrateSecrets } from "../shared/secrets";
 
 const MIN = 60 * 1000;
 const QUOTE_DELAY = 60 * MIN; // 1 hour
 const LOE_DELAY = 10 * MIN; // 10 minutes
 
 export const handler = async (): Promise<{ quote: number; loe: number }> => {
+  await hydrateSecrets();
   const now = Date.now();
   let quote = 0;
   let loe = 0;

@@ -6,10 +6,12 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { AUTHORIZE_URL, QB_SCOPE } from "../shared/quickbooks";
+import { hydrateSecrets } from "../shared/secrets";
 
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   const domain = event.requestContext.domainName;
   const redirectUri = `https://${domain}/qb/callback`;
   const params = new URLSearchParams({

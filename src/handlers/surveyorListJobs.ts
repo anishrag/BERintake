@@ -15,6 +15,7 @@ import type {
 import { findByStatus } from "../shared/jobs";
 import { isSurveyor } from "../shared/surveyorAuth";
 import type { JobStatus } from "../shared/types";
+import { hydrateSecrets } from "../shared/secrets";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -29,6 +30,7 @@ const READY: JobStatus[] = ["booked", "signed", "confirmed"];
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   if (!isSurveyor(event)) return json(401, { error: "unauthorized" });
 
   const requested = event.queryStringParameters?.status as

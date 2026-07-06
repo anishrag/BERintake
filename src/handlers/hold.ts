@@ -8,6 +8,7 @@ import type {
 import { getEvent, isOpenSlot } from "../shared/calendar";
 import { placeHold } from "../shared/holds";
 import { getJobByToken, setHold } from "../shared/jobs";
+import { hydrateSecrets } from "../shared/secrets";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -20,6 +21,7 @@ const BOOKED_STATUSES = ["booked", "paid", "signed", "confirmed", "pulled"];
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   const token = event.pathParameters?.token;
   if (!token) return json(400, { error: "missing token" });
 

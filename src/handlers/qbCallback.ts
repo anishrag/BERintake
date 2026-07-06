@@ -6,10 +6,12 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { exchangeCode } from "../shared/quickbooks";
+import { hydrateSecrets } from "../shared/secrets";
 
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   const q = event.queryStringParameters || {};
   const code = q.code;
   const realmId = q.realmId;

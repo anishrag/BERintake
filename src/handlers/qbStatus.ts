@@ -6,8 +6,10 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { getStoredAuth, qbFetch } from "../shared/quickbooks";
+import { hydrateSecrets } from "../shared/secrets";
 
 export const handler = async (): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   const auth = await getStoredAuth();
   if (!auth?.refreshToken || !auth.realmId) {
     return {

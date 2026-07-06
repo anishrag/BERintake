@@ -8,6 +8,7 @@ import type {
 } from "aws-lambda";
 import { findJobByLoeDocId, setJobStatus, setLoeStatus } from "../shared/jobs";
 import { sendAllSetEmail } from "../shared/notify";
+import { hydrateSecrets } from "../shared/secrets";
 
 const ok = (): APIGatewayProxyResultV2 => ({ statusCode: 200, body: "ok" });
 const unauthorized = (): APIGatewayProxyResultV2 => ({
@@ -26,6 +27,7 @@ function secretsMatch(a: string | undefined, b: string | undefined): boolean {
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   // Authenticate: the SignWell callback URL carries a secret token (?t=…) that
   // only SignWell has. Reject anything without the right token (fail closed if
   // the token env var is unset).

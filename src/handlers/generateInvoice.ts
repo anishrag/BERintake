@@ -8,6 +8,7 @@ import type {
 import { getJobByToken } from "../shared/jobs";
 import { ensureInvoiceForJob } from "../shared/qbInvoice";
 import { allowRequest, clientIp } from "../shared/rateLimit";
+import { hydrateSecrets } from "../shared/secrets";
 
 // Only mint a QB invoice once the client has committed to a slot (held it) or
 // booked — stops a bare token from creating QuickBooks junk.
@@ -22,6 +23,7 @@ const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   const token = event.pathParameters?.token;
   if (!token) return json(400, { error: "missing token" });
 

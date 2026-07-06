@@ -40,6 +40,7 @@ import {
   tgEditText,
   tgSend,
 } from "../shared/telegram";
+import { hydrateSecrets } from "../shared/secrets";
 
 // Telegram retries on non-200, so we always return 200 even on internal errors.
 const ok = (): APIGatewayProxyResultV2 => ({ statusCode: 200, body: "ok" });
@@ -59,6 +60,7 @@ function secretsMatch(a: string | undefined, b: string | undefined): boolean {
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   // Authenticate: Telegram sends the configured secret_token on every request as
   // this header. Reject anything else (fail closed if the env var is unset).
   if (

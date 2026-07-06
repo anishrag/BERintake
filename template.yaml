@@ -3,39 +3,19 @@ Transform: AWS::Serverless-2016-10-31
 Description: BER Intake — client intake backend (precursor to BER_APP).
 
 Parameters:
-  TelegramBotToken:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: Bot token from @BotFather.
-  TelegramWebhookSecret:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: setWebhook secret_token — Telegram sends it as X-Telegram-Bot-Api-Secret-Token; authenticates the webhook.
+  # NOTE: secrets (bot token, webhook secrets, API keys, OAuth client secret /
+  # refresh token, Turnstile/partner/surveyor keys) are NOT CloudFormation
+  # parameters — they live in SSM Parameter Store as SecureStrings under
+  # /ber-intake/ and are loaded at runtime by shared/secrets.ts. deploy.py
+  # writes them there. Only non-secret config lives here.
   AllowedChatId:
     Type: String
     Default: ""
     Description: Your Telegram chat id. Leave blank on first deploy, then /start the bot to learn it and redeploy with it set.
-  PartnerAccessKey:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: Shared secret the partner web form must send to create a job.
-  TurnstileSecret:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: Cloudflare Turnstile secret key for the public website job-creation CAPTCHA. Blank = CAPTCHA skipped (dev only).
   PublicSiteUrl:
     Type: String
     Default: https://cannygreen.com
     Description: Base URL the client-facing quote link is built from.
-  GoogleMapsApiKey:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: Google Maps Geocoding API key, used to map an eircode to a service zone for pricing. Same key as the website's REACT_APP_GOOGLE_MAPS_API_KEY.
   QuoteFromEmail:
     Type: String
     Default: test@cannygreen.com
@@ -48,16 +28,6 @@ Parameters:
     Type: String
     Default: ""
     Description: Google OAuth client id (from the website's credentials.json).
-  GoogleClientSecret:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: Google OAuth client secret.
-  GoogleRefreshToken:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: Google OAuth refresh token (from the website's token.json).
   GoogleCalendarId:
     Type: String
     Default: ""
@@ -66,11 +36,6 @@ Parameters:
     Type: String
     Default: ""
     Description: QuickBooks (Intuit) OAuth client id.
-  QbClientSecret:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: QuickBooks OAuth client secret.
   QbEnv:
     Type: String
     Default: sandbox
@@ -79,17 +44,11 @@ Parameters:
   QbTaxCodeId:
     Type: String
     Default: ""
-    Description: Optional QuickBooks TaxCode id for invoice lines. Blank = auto-pick a zero/exempt code.
-  SignWellApiKey:
+    Description: QuickBooks TaxCode id for the BER survey line (standard/23% rate). Blank = auto-pick a zero/exempt code.
+  QbOutlayTaxCodeId:
     Type: String
-    NoEcho: true
     Default: ""
-    Description: SignWell API key (X-Api-Key).
-  SignWellWebhookToken:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: Secret token in the SignWell callback URL (?t=…) — authenticates the webhook.
+    Description: QuickBooks TaxCode id for the SEAI publishing-fee outlay line (0% / No VAT). Blank = auto-pick a zero/exempt code.
   SignWellTemplateId:
     Type: String
     Default: ""
@@ -103,11 +62,6 @@ Parameters:
     Default: "true"
     AllowedValues: ["true", "false"]
     Description: SignWell test mode — true while building (no billing, no real emails).
-  SurveyorAccessKey:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: Shared secret the BER_APP tablet sends (x-surveyor-key) to pull seeds and push finished BERs. Blank = /surveyor/* endpoints reject all requests.
 
 Globals:
   HttpApi:
@@ -140,31 +94,26 @@ Globals:
         RATE_LIMIT_TABLE: !Ref RateLimitTable
         GEOCODE_CACHE_TABLE: !Ref GeocodeCacheTable
         GEOCODE_DAILY_LIMIT: "50"
-        TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
-        TELEGRAM_WEBHOOK_SECRET: !Ref TelegramWebhookSecret
+        # Secrets live in SSM Parameter Store under this prefix and are loaded
+        # into the environment at runtime by shared/secrets.ts (hydrateSecrets).
+        # They are deliberately NOT passed as Lambda env vars / CFN params, so
+        # they never appear in the function config or the stack.
+        SECRETS_PREFIX: /ber-intake/
         ALLOWED_CHAT_ID: !Ref AllowedChatId
-        PARTNER_ACCESS_KEY: !Ref PartnerAccessKey
-        TURNSTILE_SECRET: !Ref TurnstileSecret
         PUBLIC_SITE_URL: !Ref PublicSiteUrl
-        GOOGLE_MAPS_API_KEY: !Ref GoogleMapsApiKey
         QUOTE_FROM_EMAIL: !Ref QuoteFromEmail
         TEST_EMAIL_OVERRIDE: !Ref TestEmailOverride
         GOOGLE_CLIENT_ID: !Ref GoogleClientId
-        GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
-        GOOGLE_REFRESH_TOKEN: !Ref GoogleRefreshToken
         GOOGLE_CALENDAR_ID: !Ref GoogleCalendarId
         QB_CLIENT_ID: !Ref QbClientId
-        QB_CLIENT_SECRET: !Ref QbClientSecret
         QB_ENV: !Ref QbEnv
         QB_AUTH_TABLE: !Ref QbAuthTable
         QB_TAX_CODE_ID: !Ref QbTaxCodeId
-        SIGNWELL_API_KEY: !Ref SignWellApiKey
-        SIGNWELL_WEBHOOK_TOKEN: !Ref SignWellWebhookToken
+        QB_OUTLAY_TAX_CODE_ID: !Ref QbOutlayTaxCodeId
         SIGNWELL_TEMPLATE_ID: !Ref SignWellTemplateId
         SIGNWELL_PLACEHOLDER: !Ref SignWellPlaceholder
         SIGNWELL_TEST_MODE: !Ref SignWellTestMode
         ARTIFACTS_BUCKET: !Ref BerArtifactsBucket
-        SURVEYOR_ACCESS_KEY: !Ref SurveyorAccessKey
         BUG_REPORTS_TABLE: !Ref BugReportsTable
 
 Resources:
@@ -294,6 +243,8 @@ Resources:
     Properties:
       Handler: src/handlers/createJob.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref RateLimitTable }
         - Statement:
@@ -315,6 +266,8 @@ Resources:
     Properties:
       Handler: src/handlers/zoneLookup.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref RateLimitTable }
         - DynamoDBCrudPolicy: { TableName: !Ref GeocodeCacheTable }
       Events:
@@ -332,6 +285,8 @@ Resources:
     Properties:
       Handler: src/handlers/getJob.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
       Events:
         Get:
@@ -348,6 +303,8 @@ Resources:
     Properties:
       Handler: src/handlers/saveQuote.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
       Events:
         Post:
@@ -364,6 +321,8 @@ Resources:
     Properties:
       Handler: src/handlers/saveDetails.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - Statement:
             - Effect: Allow
@@ -384,6 +343,8 @@ Resources:
     Properties:
       Handler: src/handlers/slots.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBReadPolicy: { TableName: !Ref JobsTable }
         - DynamoDBReadPolicy: { TableName: !Ref HoldsTable }
       Events:
@@ -401,6 +362,8 @@ Resources:
     Properties:
       Handler: src/handlers/hold.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref HoldsTable }
       Events:
@@ -418,6 +381,8 @@ Resources:
     Properties:
       Handler: src/handlers/book.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref HoldsTable }
         - S3CrudPolicy: { BucketName: !Ref BerArtifactsBucket }
@@ -440,6 +405,8 @@ Resources:
       Handler: src/handlers/sweepDeferredEmails.handler
       Timeout: 60
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
         - Statement:
@@ -462,6 +429,8 @@ Resources:
     Properties:
       Handler: src/handlers/confirmBooking.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - Statement:
             - Effect: Allow
@@ -482,6 +451,8 @@ Resources:
     Properties:
       Handler: src/handlers/loe.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref RateLimitTable }
       Events:
@@ -499,6 +470,8 @@ Resources:
     Properties:
       Handler: src/handlers/signwellWebhook.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
         - Statement:
@@ -520,6 +493,8 @@ Resources:
     Properties:
       Handler: src/handlers/generateInvoice.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
         - DynamoDBCrudPolicy: { TableName: !Ref RateLimitTable }
@@ -538,6 +513,8 @@ Resources:
     Properties:
       Handler: src/handlers/invoicePdf.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
       Events:
@@ -554,6 +531,9 @@ Resources:
         EntryPoints: [src/handlers/qbConnect.ts]
     Properties:
       Handler: src/handlers/qbConnect.handler
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
       Events:
         Get:
           Type: HttpApi
@@ -569,6 +549,8 @@ Resources:
     Properties:
       Handler: src/handlers/qbCallback.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
       Events:
         Get:
@@ -585,11 +567,31 @@ Resources:
     Properties:
       Handler: src/handlers/qbStatus.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
       Events:
         Get:
           Type: HttpApi
           Properties: { Path: /qb/status, Method: GET }
+
+  QbTaxCodesFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/qbTaxCodes.ts]
+    Properties:
+      Handler: src/handlers/qbTaxCodes.handler
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
+        - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: /qb/taxcodes, Method: GET }
 
   TelegramWebhookFn:
     Type: AWS::Serverless::Function
@@ -601,6 +603,8 @@ Resources:
     Properties:
       Handler: src/handlers/telegramWebhook.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref BotStateTable }
         - Statement:
@@ -623,6 +627,8 @@ Resources:
     Properties:
       Handler: src/handlers/surveyorListJobs.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBReadPolicy: { TableName: !Ref JobsTable }
       Events:
         Get:
@@ -639,6 +645,8 @@ Resources:
     Properties:
       Handler: src/handlers/surveyorGetJob.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBReadPolicy: { TableName: !Ref JobsTable }
         - S3ReadPolicy: { BucketName: !Ref BerArtifactsBucket }
       Events:
@@ -656,6 +664,8 @@ Resources:
     Properties:
       Handler: src/handlers/surveyorBerPresign.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - S3CrudPolicy: { BucketName: !Ref BerArtifactsBucket }
       Events:
@@ -673,6 +683,8 @@ Resources:
     Properties:
       Handler: src/handlers/surveyorBerComplete.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
       Events:
         Post:
@@ -689,6 +701,8 @@ Resources:
     Properties:
       Handler: src/handlers/surveyorBugReportCreate.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref BugReportsTable }
         - S3CrudPolicy: { BucketName: !Ref BerArtifactsBucket }
       Events:
@@ -706,6 +720,8 @@ Resources:
     Properties:
       Handler: src/handlers/surveyorBugReportComplete.handler
       Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref BugReportsTable }
       Events:
         Post:

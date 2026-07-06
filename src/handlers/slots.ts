@@ -7,10 +7,12 @@ import type {
 import { listSlots } from "../shared/calendar";
 import { heldByOthers } from "../shared/holds";
 import { getJobByToken } from "../shared/jobs";
+import { hydrateSecrets } from "../shared/secrets";
 
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   const token = event.pathParameters?.token;
   if (!token) return { statusCode: 400, body: "missing token" };
 

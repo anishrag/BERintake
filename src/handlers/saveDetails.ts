@@ -15,6 +15,7 @@ import {
   isFormLocked,
   setDetails,
 } from "../shared/jobs";
+import { hydrateSecrets } from "../shared/secrets";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -25,6 +26,7 @@ const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   const token = event.pathParameters?.token;
   if (!token) return json(400, { error: "missing token" });
 

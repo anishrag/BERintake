@@ -13,6 +13,7 @@ import { allowRequest, clientIp } from "../shared/rateLimit";
 import { notifyOwner } from "../shared/telegram";
 import { verifyTurnstile } from "../shared/turnstile";
 import type { JobSource } from "../shared/types";
+import { hydrateSecrets } from "../shared/secrets";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -23,6 +24,7 @@ const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   if (!(await allowRequest(clientIp(event), "createjob", 5, 60))) {
     return json(429, { error: "rate-limited" });
   }

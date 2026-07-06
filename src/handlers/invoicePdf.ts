@@ -7,10 +7,12 @@ import type {
 } from "aws-lambda";
 import { getJobByToken } from "../shared/jobs";
 import { ensureInvoiceForJob, getInvoicePdf } from "../shared/qbInvoice";
+import { hydrateSecrets } from "../shared/secrets";
 
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   const token = event.pathParameters?.token;
   if (!token) return { statusCode: 400, body: "missing token" };
 

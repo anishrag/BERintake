@@ -244,11 +244,9 @@ export async function sendBookingPrefilledEmail(job: Job): Promise<void> {
 
 Thanks for arranging your BER assessment${when ? ` for ${when}` : ""}.
 
-To confirm your booking, please open the link below to add a few details about the property, pay, and sign the letter of engagement:
+To confirm your booking, please open the link below to add a few details about the property and sign the letter of engagement:
 
 ${link}
-
-Your appointment isn't fully confirmed until those steps are complete.
 
 Kind regards,
 Anish
@@ -257,17 +255,16 @@ Cannygreen`;
   const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#222;max-width:560px">
   <p>Hi ${escapeHtml(firstName)},</p>
   <p>Thanks for arranging your BER assessment${when ? ` for <strong>${when}</strong>` : ""}.</p>
-  <p>To confirm your booking, please open the link below to add a few property details, pay, and sign the letter of engagement:</p>
+  <p>To confirm your booking, please open the link below to add a few property details and sign the letter of engagement:</p>
   <p style="text-align:center;margin:28px 0">
-    <a href="${link}" style="background:#2e7d32;color:#fff;text-decoration:none;padding:13px 26px;border-radius:8px;font-weight:600;display:inline-block">Complete my booking</a>
+    <a href="${link}" style="background:#2e7d32;color:#fff;text-decoration:none;padding:13px 26px;border-radius:8px;font-weight:600;display:inline-block">Add my details</a>
   </p>
-  <p><em>Your appointment isn't fully confirmed until those steps are complete.</em></p>
   <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
 </div>`;
 
   await sendEmail({
     to: job.client.email,
-    subject: "Complete your BER booking — Cannygreen",
+    subject: "A couple of details before your BER assessment — Cannygreen",
     text,
     html,
   });

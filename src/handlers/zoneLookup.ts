@@ -9,6 +9,7 @@ import type {
 import { geocodeBudgetOk, getCachedZone, setCachedZone } from "../shared/geocache";
 import { computeQuotePricing, needsGeocode } from "../shared/pricing";
 import { allowRequest, clientIp } from "../shared/rateLimit";
+import { hydrateSecrets } from "../shared/secrets";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -19,6 +20,7 @@ const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
 export const handler = async (
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> => {
+  await hydrateSecrets();
   // Per-IP rate limit — this is public and each geocode costs money.
   if (!(await allowRequest(clientIp(event), "zone", 30, 60))) {
     return json(429, { error: "rate-limited" });
