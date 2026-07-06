@@ -7,7 +7,7 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { findJobByLoeDocId, setJobStatus, setLoeStatus } from "../shared/jobs";
-import { sendAllSetEmail } from "../shared/notify";
+import { sendAllSetEmail, sendOwnerSignedEmail } from "../shared/notify";
 import { hydrateSecrets } from "../shared/secrets";
 
 const ok = (): APIGatewayProxyResultV2 => ({ statusCode: 200, body: "ok" });
@@ -64,6 +64,12 @@ export const handler = async (
         await sendAllSetEmail(job);
       } catch (err) {
         console.error("all-set email failed for", job.jobId, err);
+      }
+      // Owner notification: client has signed, with details + invoice attached.
+      try {
+        await sendOwnerSignedEmail(job);
+      } catch (err) {
+        console.error("owner signed email failed for", job.jobId, err);
       }
     }
   } catch (err) {

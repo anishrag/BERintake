@@ -81,6 +81,116 @@ const SHELL =
 const BTN =
   "background:#2e7d32;color:#fff;text-decoration:none;padding:13px 26px;border-radius:8px;font-weight:600;display:inline-block";
 
+// --- Owner (business) notifications -----------------------------------------
+// The owner gets an email when a client completes the booking form and when they
+// sign the letter of engagement, each with the client's details and a copy of
+// the invoice to confirm everything looks right. Recipient via OWNER_EMAIL.
+const OWNER_EMAIL = (): string => process.env.OWNER_EMAIL || "anish@cannygreen.com";
+
+function fmtWhen(iso?: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString("en-IE", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+// A readable rundown of the client + survey details for owner emails. `kd` is
+// the job's keyDetails (the survey form fields).
+function detailRows(
+  job: Job,
+  kd: any,
+  appointmentIso?: string | null,
+): [string, string][] {
+  const c = job.client;
+  const ext = Array.isArray(kd?.extensions) ? kd.extensions : [];
+  const extStr = ext
+    .map((e: any) => (e.description ? `${e.year} (${e.description})` : `${e.year}`))
+    .join(", ");
+  const insul = [
+    kd?.insulationWalls && "walls",
+    kd?.insulationRoof && "roof/attic",
+    kd?.insulationFloor && "floor",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const raw: [string, unknown][] = [
+    ["Appointment", fmtWhen(appointmentIso ?? (job.booking as any)?.start)],
+    ["Name", c.name],
+    ["Address", kd?.address],
+    ["Eircode", c.eircode],
+    ["Email", c.email],
+    ["Phone", c.phone],
+    ["Reason for BER", kd?.reason],
+    ["MPRN", kd?.mprn],
+    ["Year built", kd?.yearBuilt],
+    ["Heating system", kd?.heatingSystem],
+    ["Extensions", extStr],
+    ["Insulation works", insul],
+    ["Insulation notes", kd?.insulationNotes],
+    ["Windows installed", kd?.windowYearUnknown ? "Unknown" : kd?.windowYear],
+    ["Doors installed", kd?.doorYearUnknown ? "Unknown" : kd?.doorYear],
+    ["Comments", kd?.comments],
+  ];
+  return raw
+    .map(([k, v]) => [k, v == null ? "" : String(v).trim()] as [string, string])
+    .filter(([, v]) => v !== "");
+}
+
+async function sendOwnerEmail(
+  subject: string,
+  intro: string,
+  rows: [string, string][],
+  attachments: Attachment[],
+): Promise<void> {
+  const text = `${intro}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join("\n")}`;
+  const html = `<div style="${SHELL}">
+  <p>${escapeHtml(intro)}</p>
+  <table style="border-collapse:collapse;font-size:14px">
+    ${rows
+      .map(
+        ([k, v]) =>
+          `<tr><td style="padding:2px 14px 2px 0;color:#555;vertical-align:top"><strong>${escapeHtml(k)}</strong></td><td style="padding:2px 0">${escapeHtml(v)}</td></tr>`,
+      )
+      .join("")}
+  </table>
+</div>`;
+  await deliver({ to: OWNER_EMAIL(), subject, text, html, attachments });
+}
+
+/** Owner email: a client has completed the booking form. */
+export async function sendOwnerNewBookingEmail(
+  job: Job,
+  kd: unknown,
+  appointmentIso?: string | null,
+): Promise<void> {
+  const inv = await invoiceAttachment(job);
+  await sendOwnerEmail(
+    `New booking — ${job.client.name} (${job.client.eircode})`,
+    `${job.client.name} has completed the booking form. Details and invoice below.`,
+    detailRows(job, kd, appointmentIso),
+    inv ? [inv] : [],
+  );
+}
+
+/** Owner email: a client has signed the letter of engagement (funnel complete). */
+export async function sendOwnerSignedEmail(job: Job): Promise<void> {
+  const inv = await invoiceAttachment(job);
+  await sendOwnerEmail(
+    `Signed LoE — ${job.client.name} (${job.client.eircode})`,
+    `${job.client.name} has signed the letter of engagement — everything's complete. Details and invoice below.`,
+    detailRows(job, job.keyDetails),
+    inv ? [inv] : [],
+  );
+}
+
 // Email #3 — the terminal "you're all set" email, sent once the client has
 // signed the letter of engagement. Signing is the last thing they do online
 // (payment is handled earlier), so this is the end of the funnel.

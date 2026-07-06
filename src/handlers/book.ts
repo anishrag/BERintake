@@ -14,6 +14,7 @@ import {
   setBooking,
   setDetails,
 } from "../shared/jobs";
+import { sendOwnerNewBookingEmail } from "../shared/notify";
 import { hydrateSecrets } from "../shared/secrets";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
@@ -80,6 +81,14 @@ export const handler = async (
   await setBooking(job.jobId, booking);
   await releaseHold(eventId);
   await clearHold(job.jobId);
+
+  // Tell the owner the booking details are in, with the invoice attached.
+  // Best-effort — never fail a booking over a notification.
+  try {
+    await sendOwnerNewBookingEmail(job, details ?? job.keyDetails, booking.start);
+  } catch (err) {
+    console.error("owner new-booking email failed", err);
+  }
 
   // Now that they've committed, geocode the eircode, grab the satellite image,
   // and fold the client's booking details into the seed for BER_APP. Best-effort

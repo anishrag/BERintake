@@ -67,6 +67,7 @@ def read_kv(filename: str, keys: dict[str, str], target: dict[str, str]) -> None
 # --- config toggles (non-secret params) ---
 params["QuoteFromEmail"] = os.environ.get("QUOTE_FROM_EMAIL", "anish@cannygreen.com")
 params["QuoteFromName"] = os.environ.get("QUOTE_FROM_NAME", "Anish Raghavan")
+params["OwnerEmail"] = os.environ.get("OWNER_EMAIL", "anish@cannygreen.com")
 params["TestEmailOverride"] = os.environ.get("TEST_EMAIL_OVERRIDE", "off")
 params["PublicSiteUrl"] = os.environ.get(
     "PUBLIC_SITE_URL", "https://d1ze07dqk0doqs.cloudfront.net"
