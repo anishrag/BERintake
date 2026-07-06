@@ -420,6 +420,7 @@ export async function findJobByLoeDocId(documentId: string): Promise<Job | undef
 export async function setBooking(
   jobId: string,
   booking: Record<string, unknown>,
+  status: JobStatus = "booked",
 ): Promise<void> {
   await ddb.send(
     new UpdateCommand({
@@ -429,7 +430,7 @@ export async function setBooking(
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
         ":b": booking,
-        ":s": "booked",
+        ":s": status,
         ":u": new Date().toISOString(),
       },
     }),

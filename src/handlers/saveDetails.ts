@@ -7,12 +7,14 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { sendEmail } from "../shared/email";
+import { sendOwnerNewBookingEmail } from "../shared/notify";
 import { escapeHtml } from "../shared/html";
 import {
   addSentEmail,
   clientLink,
   getJobByToken,
   isFormLocked,
+  setBooking,
   setDetails,
 } from "../shared/jobs";
 import { hydrateSecrets } from "../shared/secrets";
@@ -46,6 +48,26 @@ export const handler = async (
       ? (body.details as Record<string, unknown>)
       : {};
   await setDetails(job.jobId, details);
+
+  // A pre-agreed (Telegram) booking becomes a real `booked` once the client has
+  // filled in the form. Reset bookedAt so the LoE nudge times from now (real
+  // engagement), not from when the owner created the pre-agreed slot.
+  if (job.status === "prebooked") {
+    const booking = (job.booking as Record<string, unknown> | undefined) ?? {};
+    await setBooking(
+      job.jobId,
+      { ...booking, bookedAt: new Date().toISOString() },
+      "booked",
+    );
+    // Owner notification: the pre-agreed client has now completed the form.
+    // Reload so it carries the backfilled name + saved details.
+    try {
+      const fresh = (await getJobByToken(token)) ?? job;
+      await sendOwnerNewBookingEmail(fresh, details, booking.start as string | undefined);
+    } catch (err) {
+      console.error("owner email (prebooked->booked) failed", err);
+    }
+  }
 
   let emailed = false;
   // Cap the resume email to once per job — the details always save (above), but

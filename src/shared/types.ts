@@ -6,7 +6,8 @@ export type JobStatus =
   | "pending_review" // partner-submitted, awaiting owner approval on Telegram
   | "quote_sent" // client emailed the quote link
   | "quoted" // client filled quote details
-  | "booked" // date picked
+  | "prebooked" // Telegram pre-agreed slot set by the owner; client hasn't filled the form yet
+  | "booked" // date picked / client completed the booking form
   | "paid" // Revolut payment confirmed
   | "signed" // letter of engagement e-signed
   | "confirmed" // paid + signed: ready for the assessor

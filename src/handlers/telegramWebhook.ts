@@ -327,12 +327,19 @@ async function createPreAgreedJob(
   let bookingLine = "";
   try {
     const ev = await createBookedEvent(summary, dt.startNaive, dt.endNaive);
-    await setBooking(job.jobId, {
-      eventId: ev.id,
-      start: ev.start,
-      end: ev.end,
-      bookedAt: new Date().toISOString(),
-    });
+    // Pre-agreed slot: mark `prebooked`, not `booked`. It becomes `booked` only
+    // once the client completes the survey form (so the deferred LoE nudge and
+    // the assessor pull don't fire before they've done anything).
+    await setBooking(
+      job.jobId,
+      {
+        eventId: ev.id,
+        start: ev.start,
+        end: ev.end,
+        bookedAt: new Date().toISOString(),
+      },
+      "prebooked",
+    );
     bookingLine = `\n📅 ${ev.start}`;
     // Seed the BER for the tablet (address, satellite image, property type) —
     // the web booking flow does this in book.ts; the Telegram flow must too, or
