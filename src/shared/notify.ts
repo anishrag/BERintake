@@ -65,6 +65,7 @@ function apptWhen(job: Job): string {
   if (!start) return "";
   try {
     return new Date(start).toLocaleString("en-IE", {
+      timeZone: "Europe/Dublin",
       weekday: "long",
       day: "numeric",
       month: "long",
@@ -91,6 +92,7 @@ function fmtWhen(iso?: string | null): string {
   if (!iso) return "";
   try {
     return new Date(iso).toLocaleString("en-IE", {
+      timeZone: "Europe/Dublin",
       weekday: "long",
       day: "numeric",
       month: "long",
@@ -339,6 +341,7 @@ export async function sendBookingPrefilledEmail(job: Job): Promise<void> {
   if (start) {
     try {
       when = new Date(start).toLocaleString("en-IE", {
+        timeZone: "Europe/Dublin",
         weekday: "long",
         day: "numeric",
         month: "long",
