@@ -329,15 +329,35 @@ export async function setDetails(
   jobId: string,
   details: Record<string, unknown>,
 ): Promise<void> {
+  const sets = ["keyDetails = :d", "updatedAt = :u"];
+  const names: Record<string, string> = {};
+  const values: Record<string, unknown> = {
+    ":d": details,
+    ":u": new Date().toISOString(),
+  };
+
+  // Backfill the client record's name/phone from the form when the client
+  // supplied them. This is how a booking created without a name (e.g. a Telegram
+  // pre-agreed booking) picks up the real name before the LoE/invoice are made.
+  const name = typeof details.name === "string" ? details.name.trim() : "";
+  if (name) {
+    sets.push("client.#nm = :cn");
+    names["#nm"] = "name";
+    values[":cn"] = name;
+  }
+  const phone = typeof details.phone === "string" ? details.phone.trim() : "";
+  if (phone) {
+    sets.push("client.phone = :cp");
+    values[":cp"] = phone;
+  }
+
   await ddb.send(
     new UpdateCommand({
       TableName: JOBS_TABLE,
       Key: { jobId },
-      UpdateExpression: "SET keyDetails = :d, updatedAt = :u",
-      ExpressionAttributeValues: {
-        ":d": details,
-        ":u": new Date().toISOString(),
-      },
+      UpdateExpression: "SET " + sets.join(", "),
+      ...(Object.keys(names).length ? { ExpressionAttributeNames: names } : {}),
+      ExpressionAttributeValues: values,
     }),
   );
 }

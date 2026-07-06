@@ -173,7 +173,7 @@ async function handleOwnerMessage(chatId: string, text: string): Promise<void> {
   }
   if (text === "/newclient") {
     await setState({ chatId, flow: "client", step: "name", draft: {} });
-    await tgSend(chatId, "New pre-agreed booking. What's the client's <b>name</b>?");
+    await tgSend(chatId, "New pre-agreed booking. What's the client's <b>name</b>? (or type 'skip' if you don't know it yet — the client fills it in on the form)");
     return;
   }
 
@@ -193,7 +193,7 @@ async function advance(
   const draft = state.draft;
   switch (state.step) {
     case "name":
-      draft.name = text;
+      draft.name = /^skip$/i.test(text) ? undefined : text;
       await setState({ chatId, flow: state.flow, step: "email", draft });
       await tgSend(chatId, "Client's <b>email</b>?");
       return;
@@ -278,7 +278,9 @@ function clientOf(draft: {
   eircode?: string;
 }) {
   return {
-    name: draft.name!,
+    // Name may be skipped (unknown at booking time); the client fills it in on
+    // the booking form, which backfills the record via setDetails.
+    name: draft.name ?? "",
     email: draft.email!,
     phone: draft.phone,
     eircode: draft.eircode!,
@@ -351,7 +353,7 @@ async function createPreAgreedJob(
 
   await tgSend(
     chatId,
-    `✅ Booking created for <b>${escapeHtml(job.client.name)}</b> (${propertyType}${price != null ? `, €${price}` : ""}).${bookingLine}\n` +
+    `✅ Booking created for <b>${escapeHtml(job.client.name || `(name TBC) ${job.client.eircode}`)}</b> (${propertyType}${price != null ? `, €${price}` : ""}).${bookingLine}\n` +
       `Email sent to ${escapeHtml(job.client.email)}.\n\nClient link:\n${clientLink(job.token)}`,
   );
 }

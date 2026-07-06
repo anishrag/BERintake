@@ -44,12 +44,16 @@ export async function createLoeDocument(job: Job): Promise<LoeResult> {
   // client-supplied one.
   const price = await resolveJobPrice(job);
 
+  // Fallback so the letter never shows a blank name (a booking may have been
+  // created without one; the client normally fills it in on the form).
+  const clientName = (job.client.name || "").trim() || "Client";
+
   const templateFields = [
-    { api_id: "client_name", value: job.client.name },
+    { api_id: "client_name", value: clientName },
     // SignWell requires unique field API IDs — use client_name_2 (_3, …) for
     // repeats of the same value in the letter.
-    { api_id: "client_name_2", value: job.client.name },
-    { api_id: "client_firstname", value: job.client.name.split(" ")[0] },
+    { api_id: "client_name_2", value: clientName },
+    { api_id: "client_firstname", value: clientName.split(" ")[0] },
     { api_id: "client_address", value: kd.address || "" },
     { api_id: "client_eircode", value: job.client.eircode },
     { api_id: "letter_date", value: fmtDate() },
@@ -66,7 +70,7 @@ export async function createLoeDocument(job: Job): Promise<LoeResult> {
       {
         id: "client",
         placeholder_name: placeholder,
-        name: job.client.name,
+        name: clientName,
         email: job.client.email,
       },
     ],

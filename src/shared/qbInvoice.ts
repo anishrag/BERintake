@@ -100,7 +100,8 @@ async function ensureCustomer(
   client: ClientDetails,
   address?: string,
 ): Promise<string> {
-  const display = `${client.name} (${client.eircode})`;
+  const name = (client.name || "").trim() || "Client";
+  const display = `${name} (${client.eircode})`;
   const q = await qbQuery(`SELECT Id FROM Customer WHERE DisplayName = '${esc(display)}'`);
   const existing = q.QueryResponse?.Customer?.[0];
   if (existing) return existing.Id;
