@@ -14,6 +14,7 @@ import {
   clientLink,
   getJobByToken,
   isFormLocked,
+  seedBerFromEircode,
   setBooking,
   setDetails,
 } from "../shared/jobs";
@@ -48,6 +49,21 @@ export const handler = async (
       ? (body.details as Record<string, unknown>)
       : {};
   await setDetails(job.jobId, details);
+
+  // Keep the assessor's seed in step with the client's real address/property
+  // details. A pre-agreed booking's initial seed only had the eircode (the
+  // form isn't filled yet at booking), so refresh it once the client provides
+  // an address. Only for committed bookings (a draft has no seed yet).
+  const committed = ["prebooked", "booked", "signed", "confirmed", "pulled"].includes(
+    job.status,
+  );
+  if (committed && typeof details.address === "string" && details.address.trim()) {
+    try {
+      await seedBerFromEircode(job, details);
+    } catch (err) {
+      console.error("berSeed refresh failed for", job.jobId, err);
+    }
+  }
 
   // A pre-agreed (Telegram) booking becomes a real `booked` once the client has
   // filled in the form. Reset bookedAt so the LoE nudge times from now (real
