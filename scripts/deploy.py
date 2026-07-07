@@ -22,7 +22,8 @@ Env toggles:
                        SignWell test mode. Any individual PUBLIC_SITE_URL /
                        TEST_EMAIL_OVERRIDE / QB_ENV / SIGNWELL_TEST_MODE override
                        still wins.
-  STACK_NAME           default "ber-intake"
+  STACK_NAME           default derived from DEPLOY_ENV: ber-intake-prod for
+                       prod, ber-intake for test
   AWS_REGION           default "us-east-1"
   PUBLIC_SITE_URL      override the site URL (else derived from DEPLOY_ENV)
   QUOTE_FROM_EMAIL     default anish@cannygreen.com
@@ -51,9 +52,21 @@ SECRETS = pathlib.Path(
     or ROOT / "secrets"
 )
 
-STACK_NAME = os.environ.get("STACK_NAME", "ber-intake")
+# Deploy target: PROD by default. DEPLOY_ENV=test selects the test stack + test
+# config (test site link, mail redirected to owner, QB sandbox, SignWell test).
+DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "prod").strip().lower()
+if DEPLOY_ENV not in ("prod", "test"):
+    sys.exit(f"DEPLOY_ENV must be 'prod' or 'test', got {DEPLOY_ENV!r}")
+IS_TEST = DEPLOY_ENV == "test"
+TEST_SITE_URL = "https://d1ze07dqk0doqs.cloudfront.net"
+
+# The prod stack (ber-intake-prod) is the one the Telegram bot's webhook uses;
+# ber-intake is the test/dev stack. Both read secrets from the same /ber-intake/
+# SSM prefix. Explicit STACK_NAME still wins.
+STACK_NAME = os.environ.get("STACK_NAME", "ber-intake" if IS_TEST else "ber-intake-prod")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 SSM_PREFIX = os.environ.get("SECRETS_PREFIX", "/ber-intake/")
+print(f"==> Deploy target: {DEPLOY_ENV.upper()} (stack {STACK_NAME})")
 
 params: dict[str, str] = {}      # non-secret CloudFormation parameter overrides
 secrets: dict[str, str] = {}     # ENV_NAME -> value, written to SSM SecureStrings
@@ -71,17 +84,6 @@ def read_kv(filename: str, keys: dict[str, str], target: dict[str, str]) -> None
     except FileNotFoundError:
         print(f"WARN: {filename} not found — related values left unchanged")
 
-
-# Deploy target: PROD by default. Set DEPLOY_ENV=test for a test deploy, which
-# points client links at the private CloudFront test site AND redirects all
-# outgoing email to the owner (so a test deploy can never contact real clients).
-# Explicit PUBLIC_SITE_URL / TEST_EMAIL_OVERRIDE still win either way.
-DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "prod").strip().lower()
-if DEPLOY_ENV not in ("prod", "test"):
-    sys.exit(f"DEPLOY_ENV must be 'prod' or 'test', got {DEPLOY_ENV!r}")
-IS_TEST = DEPLOY_ENV == "test"
-TEST_SITE_URL = "https://d1ze07dqk0doqs.cloudfront.net"
-print(f"==> Deploy target: {DEPLOY_ENV.upper()}")
 
 # --- config toggles (non-secret params) ---
 params["QuoteFromEmail"] = os.environ.get("QUOTE_FROM_EMAIL", "anish@cannygreen.com")
