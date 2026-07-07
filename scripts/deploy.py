@@ -12,13 +12,21 @@ secret absent from its file is skipped (its existing SSM value is left as-is),
 so a partial secrets dir never wipes a live secret. Prints only NAMES, never
 values.
 
-Env toggles (with test-friendly defaults):
+Env toggles:
+  DEPLOY_ENV           "prod" (default) | "test". PROD is the default: a plain
+                       `python deploy.py` is fully live — links at
+                       https://cannygreen.com, real client emails, production
+                       QuickBooks, and real (billable) SignWell signatures.
+                       DEPLOY_ENV=test uses the CloudFront test site, redirects
+                       all outgoing email to the owner, QuickBooks sandbox, and
+                       SignWell test mode. Any individual PUBLIC_SITE_URL /
+                       TEST_EMAIL_OVERRIDE / QB_ENV / SIGNWELL_TEST_MODE override
+                       still wins.
   STACK_NAME           default "ber-intake"
   AWS_REGION           default "us-east-1"
-  PUBLIC_SITE_URL      default the CloudFront test site; set to
-                       https://cannygreen.com for production
+  PUBLIC_SITE_URL      override the site URL (else derived from DEPLOY_ENV)
   QUOTE_FROM_EMAIL     default anish@cannygreen.com
-  TEST_EMAIL_OVERRIDE  default "off" (send to real recipients)
+  TEST_EMAIL_OVERRIDE  override mail redirect (else derived from DEPLOY_ENV)
   QB_ENV               optional: sandbox | production
   QB_TAX_CODE_ID       optional: QuickBooks TaxCode id for the BER survey line
                        (standard/23%); blank leaves the stack value
@@ -64,24 +72,39 @@ def read_kv(filename: str, keys: dict[str, str], target: dict[str, str]) -> None
         print(f"WARN: {filename} not found — related values left unchanged")
 
 
+# Deploy target: PROD by default. Set DEPLOY_ENV=test for a test deploy, which
+# points client links at the private CloudFront test site AND redirects all
+# outgoing email to the owner (so a test deploy can never contact real clients).
+# Explicit PUBLIC_SITE_URL / TEST_EMAIL_OVERRIDE still win either way.
+DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "prod").strip().lower()
+if DEPLOY_ENV not in ("prod", "test"):
+    sys.exit(f"DEPLOY_ENV must be 'prod' or 'test', got {DEPLOY_ENV!r}")
+IS_TEST = DEPLOY_ENV == "test"
+TEST_SITE_URL = "https://d1ze07dqk0doqs.cloudfront.net"
+print(f"==> Deploy target: {DEPLOY_ENV.upper()}")
+
 # --- config toggles (non-secret params) ---
 params["QuoteFromEmail"] = os.environ.get("QUOTE_FROM_EMAIL", "anish@cannygreen.com")
 params["QuoteFromName"] = os.environ.get("QUOTE_FROM_NAME", "Anish Raghavan")
 params["OwnerEmail"] = os.environ.get("OWNER_EMAIL", "anish@cannygreen.com")
-params["TestEmailOverride"] = os.environ.get("TEST_EMAIL_OVERRIDE", "off")
-params["PublicSiteUrl"] = os.environ.get(
-    "PUBLIC_SITE_URL", "https://d1ze07dqk0doqs.cloudfront.net"
-)
-if os.environ.get("QB_ENV"):
-    params["QbEnv"] = os.environ["QB_ENV"]
+# Test: redirect all client email to the owner. Prod: send to real recipients.
+default_override = params["OwnerEmail"] if IS_TEST else "off"
+params["TestEmailOverride"] = os.environ.get("TEST_EMAIL_OVERRIDE", default_override)
+# Client-facing links: live site for prod, private test site for a test deploy.
+default_site = TEST_SITE_URL if IS_TEST else "https://cannygreen.com"
+params["PublicSiteUrl"] = os.environ.get("PUBLIC_SITE_URL", default_site)
+# QuickBooks: real company for prod, sandbox for a test deploy (explicit wins).
+params["QbEnv"] = os.environ.get("QB_ENV", "sandbox" if IS_TEST else "production")
 if os.environ.get("QB_TAX_CODE_ID"):
     params["QbTaxCodeId"] = os.environ["QB_TAX_CODE_ID"]
 if os.environ.get("QB_OUTLAY_TAX_CODE_ID"):
     params["QbOutlayTaxCodeId"] = os.environ["QB_OUTLAY_TAX_CODE_ID"]
 if os.environ.get("QB_TAX_RATE"):
     params["QbTaxRate"] = os.environ["QB_TAX_RATE"]
-if os.environ.get("SIGNWELL_TEST_MODE"):
-    params["SignWellTestMode"] = os.environ["SIGNWELL_TEST_MODE"]
+# SignWell: real (billable, legally-binding) signatures for prod, test for a
+# test deploy (explicit SIGNWELL_TEST_MODE wins).
+params["SignWellTestMode"] = os.environ.get(
+    "SIGNWELL_TEST_MODE", "true" if IS_TEST else "false")
 
 # --- non-secret config from files (stack parameters) ---
 read_kv(".env", {"GOOGLE_CALENDAR_ID": "GoogleCalendarId"}, params)
