@@ -2,7 +2,7 @@
 """Build and deploy the ber-intake stack, injecting secrets from files.
 
 Portable — no hard-coded home paths, no samconfig dependency. Secrets are read
-from the website's secrets dir (override with BER_SECRETS_DIR).
+from BERintake/secrets/ (override with BER_SECRETS_DIR).
 
 Secrets (API keys, tokens, OAuth client secret / refresh token, etc.) are NOT
 passed as CloudFormation parameters — they are written to SSM Parameter Store as
@@ -40,7 +40,7 @@ import pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent          # ber_intake/
 SECRETS = pathlib.Path(
     os.environ.get("BER_SECRETS_DIR")
-    or ROOT.parent / "BERwebsite" / "server" / "secrets"
+    or ROOT / "secrets"
 )
 
 STACK_NAME = os.environ.get("STACK_NAME", "ber-intake")
@@ -90,6 +90,9 @@ read_kv("signwell.env", {"SIGNWELL_TEMPLATE_ID": "SignWellTemplateId"}, params)
 
 # --- secrets from files (SSM SecureStrings, keyed by their runtime env name) ---
 read_kv(".env", {"REACT_APP_GOOGLE_MAPS_API_KEY": "GOOGLE_MAPS_API_KEY"}, secrets)
+# Mapbox token for the site satellite image (Google blocks satellite Static Maps
+# for EEA accounts, so imagery comes from Mapbox — see shared/satellite.ts).
+read_kv(".env", {"MAPBOX_TOKEN": "MAPBOX_TOKEN"}, secrets)
 read_kv("quickbooks.env", {"QB_CLIENT_SECRET": "QB_CLIENT_SECRET"}, secrets)
 read_kv("signwell.env", {"SIGNWELL_API_KEY": "SIGNWELL_API_KEY",
                          "SIGNWELL_WEBHOOK_TOKEN": "SIGNWELL_WEBHOOK_TOKEN"}, secrets)

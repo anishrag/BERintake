@@ -4,3 +4,7 @@ samconfig.toml
 *.env
 .env
 dist/
+__pycache__/
+# Deploy-time secrets (Google/QuickBooks/SignWell/Mapbox creds + tokens). Read
+# by scripts/deploy.py and scripts/google-calendar-auth.js; never committed.
+secrets/
