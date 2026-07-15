@@ -11,6 +11,7 @@ import {
   sendOwnerNewBookingEmail,
   sendSolarPartnerInvoiceEmail,
 } from "../shared/notify";
+import { bookSlot } from "../shared/calendar";
 import { escapeHtml } from "../shared/html";
 import {
   addSentEmail,
@@ -106,6 +107,26 @@ export const handler = async (
       { ...booking, bookedAt: new Date().toISOString() },
       "booked",
     );
+    // Refresh the calendar event's title: it was minted at /newclient time,
+    // when the name/eircode may have been skipped ("BOOKED:  |  | email") —
+    // the just-submitted form is the freshest source (same derivation as
+    // book.ts). Best-effort: a calendar hiccup must not fail the save.
+    if (typeof booking.eventId === "string" && booking.eventId) {
+      const dName =
+        (typeof details.name === "string" && details.name.trim()) ||
+        job.client.name;
+      const dEircode =
+        (typeof details.eircode === "string" && details.eircode.trim()) ||
+        job.client.eircode;
+      try {
+        await bookSlot(
+          booking.eventId,
+          `BOOKED: ${dName} | ${dEircode} | ${job.client.email}`,
+        );
+      } catch (err) {
+        console.error("calendar title refresh failed for", job.jobId, err);
+      }
+    }
     // Owner notification: the pre-agreed client has now completed the form.
     // Reload so it carries the backfilled name + saved details.
     try {
