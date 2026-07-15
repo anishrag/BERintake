@@ -339,16 +339,26 @@ async function advance(
       await tgSend(chatId, "Client's <b>email</b>?");
       return;
     case "email":
-      draft.email = text;
+      // The one wizard field with no skip and no form backfill — a typo here
+      // sends the quote/booking email into the void. Basic shape check only.
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text.trim())) {
+        await tgSend(
+          chatId,
+          "That doesn't look like an email address (e.g. <code>client@example.com</code>) — please re-enter it.",
+        );
+        return;
+      }
+      draft.email = text.trim();
       await setState({ chatId, flow: state.flow, step: "phone", draft });
       await tgSend(chatId, "Client's <b>phone</b>?", skipKeyboard("phone"));
       return;
     case "phone":
       draft.phone = /^skip$/i.test(text) ? undefined : text;
       await setState({ chatId, flow: state.flow, step: "eircode", draft });
-      // Auctioneera: the eircode may not be known yet — the client's form
-      // backfills it. Every other flow needs it (zone pricing / calendar).
-      if (state.flow === "auctioneera") {
+      // Auctioneera + pre-agreed client: the eircode may not be known yet —
+      // the client's form backfills it (and book/saveDetails re-seed the BER).
+      // The quote + solar flows need it here (zone / partner-table pricing).
+      if (state.flow === "auctioneera" || state.flow === "client") {
         await tgSend(
           chatId,
           "Client's <b>eircode</b>? (skip if unknown — the client adds it on the form)",
@@ -368,7 +378,8 @@ async function advance(
         );
         return;
       }
-      draft.eircode = text;
+      draft.eircode =
+        state.flow === "client" && /^skip$/i.test(text) ? undefined : text;
       if (state.flow === "quote") {
         await clearState(chatId);
         const job = await createJob({
@@ -402,17 +413,26 @@ async function advance(
       await setState({ chatId, flow: state.flow, step: "size", draft });
       await tgSend(
         chatId,
-        "Property <b>size</b>? Reply <code>apt</code>, <code>lt200</code> (house &lt;200m²), or <code>mt200</code> (house &gt;200m²).",
+        "Property <b>size</b>? Reply <code>apt</code>, <code>lt200</code> (house &lt;200m²), or <code>mt200</code> (house &gt;200m²). Skip if unknown — the client picks it on the form.",
+        skipKeyboard("size"),
       );
       return;
     }
     case "size": {
-      const pt = sizeToPropertyType(text);
-      if (!pt) {
-        await tgSend(chatId, "Please reply <code>apt</code>, <code>lt200</code>, or <code>mt200</code>.");
-        return;
+      if (/^skip$/i.test(text)) {
+        draft.size = undefined;
+      } else {
+        const pt = sizeToPropertyType(text);
+        if (!pt) {
+          await tgSend(
+            chatId,
+            "Please reply <code>apt</code>, <code>lt200</code>, or <code>mt200</code> — or skip.",
+            skipKeyboard("size"),
+          );
+          return;
+        }
+        draft.size = text.trim().toLowerCase();
       }
-      draft.size = text.trim().toLowerCase();
       await setState({ chatId, flow: state.flow, step: "datetime", draft });
       await tgSend(chatId, DATETIME_PROMPT, currentMonthCalendar());
       return;
@@ -435,11 +455,20 @@ async function advance(
         return;
       }
       await setState({ chatId, flow: state.flow, step: "price", draft });
-      await tgSend(
-        chatId,
-        "Agreed <b>price</b> in €? (skip to use the standard zone price)",
-        skipKeyboard("price"),
-      );
+      // The zone fallback needs BOTH the eircode (zone) and the size (which
+      // price in the zone) — if either was skipped, the price must be typed.
+      if (!draft.eircode || !draft.size) {
+        await tgSend(
+          chatId,
+          "Agreed <b>price</b> in €? (required — without the eircode and size there's no zone price to fall back to)",
+        );
+      } else {
+        await tgSend(
+          chatId,
+          "Agreed <b>price</b> in €? (skip to use the standard zone price)",
+          skipKeyboard("price"),
+        );
+      }
       return;
     }
     case "price": {
@@ -459,17 +488,30 @@ async function advance(
         await createAuctioneeraJob(chatId, draft);
         return;
       }
-      if (!/^skip$/i.test(text)) {
-        const n = Number(text.replace(/[€,\s]/g, ""));
-        if (!Number.isFinite(n) || n < 0) {
-          await tgSend(
-            chatId,
-            "Please enter a number (e.g. 280), or skip.",
-            skipKeyboard("price"),
-          );
-          return;
+      {
+        const priceRequired = !draft.eircode || !draft.size;
+        if (/^skip$/i.test(text)) {
+          if (priceRequired) {
+            await tgSend(
+              chatId,
+              "The price is required here — the skipped eircode/size leave nothing to compute one from. Please enter a number (e.g. 280).",
+            );
+            return;
+          }
+        } else {
+          const n = Number(text.replace(/[€,\s]/g, ""));
+          if (!Number.isFinite(n) || n < 0) {
+            await tgSend(
+              chatId,
+              priceRequired
+                ? "Please enter a number (e.g. 280)."
+                : "Please enter a number (e.g. 280), or skip.",
+              priceRequired ? undefined : skipKeyboard("price"),
+            );
+            return;
+          }
+          draft.price = n;
         }
-        draft.price = n;
       }
       await clearState(chatId);
       await createPreAgreedJob(chatId, draft);
@@ -507,15 +549,19 @@ async function createPreAgreedJob(
     price?: number;
   },
 ): Promise<void> {
-  const propertyType = sizeToPropertyType(draft.size!)!;
+  // Size may have been skipped (unknown at booking) — the client then picks
+  // the property type on the form, exactly like the solar flows.
+  const propertyType = draft.size ? sizeToPropertyType(draft.size)! : undefined;
   const dt = parseDateTime(draft.datetime!)!;
 
   // An explicitly entered price is a trusted override; skipping it falls back
-  // to the zone price (for display only — resolveJobPrice recomputes it).
+  // to the zone price (for display only — resolveJobPrice recomputes it). The
+  // wizard guarantees an explicit price whenever eircode or size was skipped,
+  // so the fallback only runs with both in hand.
   const agreed = draft.price;
   let price = agreed;
-  if (price == null) {
-    const computed = await computeQuotePricing(draft.eircode!);
+  if (price == null && propertyType && draft.eircode) {
+    const computed = await computeQuotePricing(draft.eircode);
     if (computed) price = (computed.prices as any)[propertyType];
   }
 
@@ -580,7 +626,7 @@ async function createPreAgreedJob(
 
   await tgSend(
     chatId,
-    `✅ Booking created for <b>${escapeHtml(job.client.name || `(name TBC) ${job.client.eircode}`)}</b> (${propertyType}${price != null ? `, €${price}` : ""}).\n📅 ${fmtIrish(ev.start)}\n` +
+    `✅ Booking created for <b>${escapeHtml(job.client.name || `(name TBC) ${job.client.eircode || job.client.email}`)}</b> (${propertyType ?? "size TBC"}${price != null ? `, €${price}` : ""}).\n📅 ${fmtIrish(ev.start)}\n` +
       `Email sent to ${escapeHtml(job.client.email)}.\n\nClient link:\n${clientLink(job.token)}`,
   );
 }
