@@ -15,7 +15,9 @@ export type JobStatus =
   | "assessed" // on-site BER completed and synced back from the tablet
   | "discarded";
 
-export type JobSource = "telegram" | "partner" | "web" | "web_admin";
+// "tablet" = registered by the assessor's tablet for a BER created from
+// scratch on-site (no intake funnel; lands directly as `pulled`).
+export type JobSource = "telegram" | "partner" | "web" | "web_admin" | "tablet";
 
 export interface ClientDetails {
   name: string;

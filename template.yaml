@@ -752,6 +752,24 @@ Resources:
           Type: HttpApi
           Properties: { Path: "/surveyor/jobs/{jobId}", Method: GET }
 
+  SurveyorCreateJobFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/surveyorCreateJob.ts]
+    Properties:
+      Handler: src/handlers/surveyorCreateJob.handler
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/surveyor/jobs", Method: POST }
+
   SurveyorBerPresignFn:
     Type: AWS::Serverless::Function
     Metadata:
