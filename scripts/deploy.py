@@ -112,6 +112,18 @@ params["SignWellTestMode"] = os.environ.get(
 read_kv(".env", {"GOOGLE_CALENDAR_ID": "GoogleCalendarId"}, params)
 read_kv("quickbooks.env", {"QB_CLIENT_ID": "QbClientId"}, params)
 read_kv("signwell.env", {"SIGNWELL_TEMPLATE_ID": "SignWellTemplateId"}, params)
+# Solar partner (/newsolar): the company invoiced instead of the client, and
+# the agreed per-property-type price table their invoices are computed from.
+read_kv("solar.env", {"SOLAR_PARTNER_NAME": "SolarPartnerName",
+                      "SOLAR_PARTNER_ADDRESS": "SolarPartnerAddress",
+                      "SOLAR_PARTNER_EMAIL": "SolarPartnerEmail",
+                      "SOLAR_PRICE_PRIMARY": "SolarPricePrimary",
+                      "SOLAR_PRICE_SECONDARY": "SolarPriceSecondary",
+                      "SOLAR_PRICE_TERTIARY": "SolarPriceTertiary",
+                      "SOLAR_PRICE_OUTSIDE": "SolarPriceOutside",
+                      "SOLAR_DISCOUNT_AMOUNT": "SolarDiscountAmount",
+                      "SOLAR_DISCOUNT_TOTAL": "SolarDiscountTotal",
+                      "SOLAR_DISCOUNT_ALREADY_USED": "SolarDiscountAlreadyUsed"}, params)
 
 # --- secrets from files (SSM SecureStrings, keyed by their runtime env name) ---
 read_kv(".env", {"REACT_APP_GOOGLE_MAPS_API_KEY": "GOOGLE_MAPS_API_KEY"}, secrets)

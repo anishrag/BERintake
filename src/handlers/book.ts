@@ -9,12 +9,17 @@ import { bookSlot, getEvent, isOpenSlot } from "../shared/calendar";
 import { isHeldByOther, releaseHold } from "../shared/holds";
 import {
   clearHold,
+  getJobById,
   getJobByToken,
   seedBerFromEircode,
   setBooking,
   setDetails,
 } from "../shared/jobs";
-import { sendOwnerNewBookingEmail } from "../shared/notify";
+import {
+  sendOwnerNewBookingEmail,
+  sendSolarPartnerInvoiceEmail,
+} from "../shared/notify";
+import { isSolarJob } from "../shared/solarPartner";
 import { hydrateSecrets } from "../shared/secrets";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
@@ -61,7 +66,12 @@ export const handler = async (
     return json(409, { error: "slot-taken" });
   }
 
-  const summary = `BOOKED: ${job.client.name} | ${job.client.eircode} | ${job.client.email}`;
+  // The job may have been created without a name/eircode (Auctioneera) — the
+  // just-submitted form is the freshest source for the calendar summary.
+  const dName = (typeof details?.name === "string" && details.name.trim()) || job.client.name;
+  const dEircode =
+    (typeof details?.eircode === "string" && details.eircode.trim()) || job.client.eircode;
+  const summary = `BOOKED: ${dName} | ${dEircode} | ${job.client.email}`;
   try {
     await bookSlot(eventId, summary);
   } catch (err) {
@@ -69,8 +79,13 @@ export const handler = async (
     return json(502, { error: "booking-failed" });
   }
 
-  // Persist the submitted survey details before flipping to booked.
-  if (details) await setDetails(job.jobId, details);
+  // Persist the submitted survey details before flipping to booked. Backfill
+  // the client eircode only when the job was created without one.
+  if (details) {
+    await setDetails(job.jobId, details, {
+      backfillEircode: !job.client.eircode,
+    });
+  }
 
   const booking = {
     eventId,
@@ -83,11 +98,28 @@ export const handler = async (
   await clearHold(job.jobId);
 
   // Tell the owner the booking details are in, with the invoice attached.
-  // Best-effort — never fail a booking over a notification.
+  // Re-fetch first so the invoice (minted inside the email) carries the
+  // backfilled name/eircode rather than the pre-form record. Best-effort —
+  // never fail a booking over a notification.
+  const fresh = (await getJobById(job.jobId)) ?? job;
   try {
-    await sendOwnerNewBookingEmail(job, details ?? job.keyDetails, booking.start);
+    await sendOwnerNewBookingEmail(fresh, details ?? fresh.keyDetails, booking.start);
   } catch (err) {
     console.error("owner new-booking email failed", err);
+  }
+
+  // Solar-partner job: the client pays nothing — invoice the partner now that
+  // the slot is committed, with the PDF attached. Re-fetch the job first: the
+  // owner email above may have just minted the invoice, and a stale object
+  // (no invoice.id) would create a duplicate in QuickBooks. Best-effort as
+  // well; the owner email already carries the same invoice as a fallback.
+  if (isSolarJob(job)) {
+    try {
+      const withInvoice = (await getJobById(job.jobId)) ?? fresh;
+      await sendSolarPartnerInvoiceEmail(withInvoice);
+    } catch (err) {
+      console.error("solar partner invoice email failed", err);
+    }
   }
 
   // Now that they've committed, geocode the eircode, grab the satellite image,
@@ -95,7 +127,7 @@ export const handler = async (
   // — never fail a confirmed booking over the seed. Use the just-submitted
   // details, falling back to any previously-saved draft.
   try {
-    await seedBerFromEircode(job, details ?? job.keyDetails);
+    await seedBerFromEircode(fresh, details ?? fresh.keyDetails);
   } catch (err) {
     console.error(`berSeed generation failed for ${job.jobId}`, err);
   }

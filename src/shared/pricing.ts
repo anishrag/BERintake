@@ -13,7 +13,9 @@ export type ServiceArea = "primary" | "secondary" | "tertiary" | "outside";
 
 type Tier = Record<HouseType, number> & { default: number };
 
-const pricing: Record<"primary" | "secondary" | "tertiary", Tier> & {
+// THE price table — the single source of truth for public prices. The website
+// renders from it too (via GET /pricing), so edits here are the only edit.
+export const pricing: Record<"primary" | "secondary" | "tertiary", Tier> & {
   outside: number;
 } = {
   primary: { apartment: 250, "small-house": 270, "large-house": 300, default: 300 },

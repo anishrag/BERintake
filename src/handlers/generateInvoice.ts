@@ -7,6 +7,7 @@ import type {
 } from "aws-lambda";
 import { getJobByToken } from "../shared/jobs";
 import { ensureInvoiceForJob } from "../shared/qbInvoice";
+import { isSolarJob } from "../shared/solarPartner";
 import { allowRequest, clientIp } from "../shared/rateLimit";
 import { hydrateSecrets } from "../shared/secrets";
 
@@ -33,6 +34,9 @@ export const handler = async (
 
   const job = await getJobByToken(token);
   if (!job || job.status === "discarded") return json(404, { error: "not found" });
+  // Solar-partner jobs: the invoice is the partner's, not the client's — the
+  // client link must not be able to mint or read it.
+  if (isSolarJob(job)) return json(404, { error: "not found" });
   if (!job.hold && !BOOKED_STATUSES.includes(job.status)) {
     return json(409, { error: "not-ready" });
   }

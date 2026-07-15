@@ -18,13 +18,30 @@ created ─┐
 A job is created through one of two front doors, both hitting the same
 `createJob` core:
 
-- **Telegram bot** (you): `/newclient` wizard → job goes straight to `quote_sent`.
+- **Telegram bot** (you): one of the five wizards below → job goes straight to
+  `quote_sent` (or `prebooked` when you set the slot yourself).
 - **Partner web form** (e.g. the solar contractor, no Telegram): `POST /jobs`
   with the shared access key → job lands in `pending_review` and pings you on
   Telegram with **Send / Discard** buttons. Approving releases the quote link.
 
 Every job records its `source` (`telegram` / `partner:<name>`) for referral
 tracking.
+
+### Telegram intake pipelines
+
+| Command | You provide | Client does online | Slot | Invoice |
+| --- | --- | --- | --- | --- |
+| `/newquote` | name, email, phone, eircode | picks property type, sees zone price, books | client picks | client pays (zone price), due on the day |
+| `/newclient` | + size, date/time, optional price | fills details, signs LoE (`prebooked` → `booked`) | you set it | client pays (agreed or zone price), due on the day |
+| `/newsolar` | name*, email, phone*, eircode | picks property type + slot, details, LoE | client picks | solar partner billed (solar.env zone×size table, ex VAT, −€100 while the 15-invoice discount lasts); client never sees a price |
+| `/newsolar_arranged` | + date/time | picks property type, details, LoE | you set it | same as `/newsolar`, sent once the form is complete |
+| `/newauctioneera` | email + price paid (name/phone/eircode*) | picks property type + slot, details, LoE | client picks | client already paid Auctioneera: invoice = paid price − 15% commission (of the ex-VAT fee, commission carries VAT); shown to the client, nothing due |
+
+\* skippable — the client's form backfills the record. Solar/Auctioneera jobs
+carry `billTo` on the Job record; partner config + the solar price/discount
+tables live in `secrets/solar.env`. The Auctioneera commission rate is a
+constant in `src/shared/qbInvoice.ts`. `/cancel` aborts a running wizard;
+anything the bot doesn't recognise gets the command list back.
 
 ## Layout
 

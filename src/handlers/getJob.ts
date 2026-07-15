@@ -11,6 +11,7 @@ import type {
 import { getJobByToken, setQuotePricing } from "../shared/jobs";
 import { computeQuotePricing, pricesForArea } from "../shared/pricing";
 import { hydrateSecrets } from "../shared/secrets";
+import { isSolarJob, solarPartner } from "../shared/solarPartner";
 
 export const handler = async (
   event: APIGatewayProxyEventV2,
@@ -41,16 +42,27 @@ export const handler = async (
     }
   }
 
+  // Solar-partner jobs: the client pays nothing, so the form must never see a
+  // price — strip the price map, the quoted price, and the (partner-billed)
+  // invoice from the view. billTo/solarPartnerName drive the no-payment UI.
+  const solar = isSolarJob(job);
+  const quote = job.quote ? { ...job.quote } : null;
+  if (solar && quote) delete quote.price;
   const view = {
     status: job.status,
+    billTo: job.billTo ?? null,
+    solarPartnerName: solar ? solarPartner().name : null,
     client: job.client,
     postWorks: job.postWorks ?? false,
     serviceArea: serviceArea ?? null,
-    quotePrices: quotePrices ?? null,
-    quote: job.quote ?? null,
+    quotePrices: solar ? null : quotePrices ?? null,
+    quote,
     booking: job.booking ?? null,
     keyDetails: job.keyDetails ?? null,
-    invoice: job.invoice ? { docNumber: job.invoice.docNumber, total: job.invoice.total } : null,
+    invoice:
+      job.invoice && !solar
+        ? { docNumber: job.invoice.docNumber, total: job.invoice.total }
+        : null,
     loe: job.loe ? { status: job.loe.status } : null,
   };
 

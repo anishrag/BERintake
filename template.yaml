@@ -74,6 +74,46 @@ Parameters:
     Default: "true"
     AllowedValues: ["true", "false"]
     Description: SignWell test mode — true while building (no billing, no real emails).
+  SolarPartnerName:
+    Type: String
+    Default: ""
+    Description: Solar partner company name — /newsolar jobs are invoiced to this company instead of the client (secrets/solar.env).
+  SolarPartnerAddress:
+    Type: String
+    Default: ""
+    Description: Solar partner billing address, shown on their QuickBooks invoices.
+  SolarPartnerEmail:
+    Type: String
+    Default: ""
+    Description: Where the solar partner's invoices are emailed. Blank = no partner email is sent (the owner copy still carries the invoice).
+  SolarPricePrimary:
+    Type: String
+    Default: ""
+    Description: Agreed solar-partner prices (€, EX VAT — VAT and the SEAI fee are added on the invoice) for the primary zone, "apartment/small-house/large-house" (e.g. 250/270/300). Solar invoices can't be generated while the table is blank.
+  SolarPriceSecondary:
+    Type: String
+    Default: ""
+    Description: Agreed solar-partner prices for the secondary zone, "apartment/small-house/large-house".
+  SolarPriceTertiary:
+    Type: String
+    Default: ""
+    Description: Agreed solar-partner prices for the tertiary zone, "apartment/small-house/large-house".
+  SolarPriceOutside:
+    Type: String
+    Default: ""
+    Description: Agreed flat solar-partner price (€, EX VAT) outside the service zones.
+  SolarDiscountAmount:
+    Type: String
+    Default: ""
+    Description: Discount (€, ex VAT) off each solar-partner invoice while the agreed quota lasts. Blank = no discount.
+  SolarDiscountTotal:
+    Type: String
+    Default: ""
+    Description: How many solar-partner invoices the discount covers in total (e.g. 15).
+  SolarDiscountAlreadyUsed:
+    Type: String
+    Default: "0"
+    Description: Discounts already given before the DynamoDB counter existed — seeds the counter on first use only.
 
 Globals:
   HttpApi:
@@ -128,6 +168,16 @@ Globals:
         SIGNWELL_TEMPLATE_ID: !Ref SignWellTemplateId
         SIGNWELL_PLACEHOLDER: !Ref SignWellPlaceholder
         SIGNWELL_TEST_MODE: !Ref SignWellTestMode
+        SOLAR_PARTNER_NAME: !Ref SolarPartnerName
+        SOLAR_PARTNER_ADDRESS: !Ref SolarPartnerAddress
+        SOLAR_PARTNER_EMAIL: !Ref SolarPartnerEmail
+        SOLAR_PRICE_PRIMARY: !Ref SolarPricePrimary
+        SOLAR_PRICE_SECONDARY: !Ref SolarPriceSecondary
+        SOLAR_PRICE_TERTIARY: !Ref SolarPriceTertiary
+        SOLAR_PRICE_OUTSIDE: !Ref SolarPriceOutside
+        SOLAR_DISCOUNT_AMOUNT: !Ref SolarDiscountAmount
+        SOLAR_DISCOUNT_TOTAL: !Ref SolarDiscountTotal
+        SOLAR_DISCOUNT_ALREADY_USED: !Ref SolarDiscountAlreadyUsed
         ARTIFACTS_BUCKET: !Ref BerArtifactsBucket
         BUG_REPORTS_TABLE: !Ref BugReportsTable
 
@@ -290,6 +340,22 @@ Resources:
           Type: HttpApi
           Properties: { Path: /zone, Method: GET }
 
+  # Public price table (shared/pricing.ts) — the website renders pricing from
+  # this, with its bundled snapshot as fallback. No secrets, no DB.
+  PricingFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/getPricing.ts]
+    Properties:
+      Handler: src/handlers/getPricing.handler
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: /pricing, Method: GET }
+
   GetJobFn:
     Type: AWS::Serverless::Function
     Metadata:
@@ -339,6 +405,12 @@ Resources:
         - SSMParameterReadPolicy:
             ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        # The prebooked→booked path sends the owner new-booking email with the
+        # invoice attached — minting it needs the QuickBooks auth table.
+        - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
+        # Refreshing the assessor seed with the client's address re-uploads the
+        # satellite image to the artifacts bucket.
+        - S3CrudPolicy: { BucketName: !Ref BerArtifactsBucket }
         - Statement:
             - Effect: Allow
               Action: [ses:SendEmail, ses:SendRawEmail]
@@ -401,6 +473,14 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref HoldsTable }
         - S3CrudPolicy: { BucketName: !Ref BerArtifactsBucket }
+        # Booking sends the owner new-booking email (invoice attached) and, for
+        # solar-partner jobs, the partner invoice email — both need SES plus
+        # QuickBooks auth to mint/fetch the invoice.
+        - DynamoDBCrudPolicy: { TableName: !Ref QbAuthTable }
+        - Statement:
+            - Effect: Allow
+              Action: [ses:SendEmail, ses:SendRawEmail]
+              Resource: "*"
       Events:
         Post:
           Type: HttpApi
@@ -622,6 +702,9 @@ Resources:
             ParameterName: ber-intake/*
         - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref BotStateTable }
+        # Pre-agreed bookings (/newclient, /newsolar_arranged) seed the tablet
+        # data at creation, including the satellite image upload.
+        - S3CrudPolicy: { BucketName: !Ref BerArtifactsBucket }
         - Statement:
             - Effect: Allow
               Action: [ses:SendEmail, ses:SendRawEmail]

@@ -7,7 +7,10 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { sendEmail } from "../shared/email";
-import { sendOwnerNewBookingEmail } from "../shared/notify";
+import {
+  sendOwnerNewBookingEmail,
+  sendSolarPartnerInvoiceEmail,
+} from "../shared/notify";
 import { escapeHtml } from "../shared/html";
 import {
   addSentEmail,
@@ -17,8 +20,12 @@ import {
   seedBerFromEircode,
   setBooking,
   setDetails,
+  setQuote,
 } from "../shared/jobs";
+import { isSolarJob, solarPriceFor } from "../shared/solarPartner";
 import { hydrateSecrets } from "../shared/secrets";
+
+const PROPERTY_TYPES = ["apartment", "small-house", "large-house"];
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -48,7 +55,31 @@ export const handler = async (
     body.details && typeof body.details === "object"
       ? (body.details as Record<string, unknown>)
       : {};
-  await setDetails(job.jobId, details);
+
+  // A pre-agreed solar booking (/newsolar_arranged) has no quote yet — the
+  // client's property type is what prices the partner invoice, so completing
+  // the form requires it. Record it (with the partner-table price) BEFORE the
+  // prebooked→booked flip below, so the invoice can be minted right after.
+  const solarNeedsQuote =
+    isSolarJob(job) && job.status === "prebooked" && !job.quote;
+  if (solarNeedsQuote) {
+    const propertyType =
+      typeof details.propertyType === "string" &&
+      PROPERTY_TYPES.includes(details.propertyType)
+        ? details.propertyType
+        : undefined;
+    if (!propertyType) return json(400, { error: "property-type-required" });
+    await setQuote(job.jobId, {
+      propertyType,
+      serviceArea: job.serviceArea,
+      price: solarPriceFor(job.serviceArea, propertyType),
+      quotedAt: new Date().toISOString(),
+    });
+  }
+
+  await setDetails(job.jobId, details, {
+    backfillEircode: !job.client.eircode,
+  });
 
   // Keep the assessor's seed in step with the client's real address/property
   // details. A pre-agreed booking's initial seed only had the eircode (the
@@ -82,6 +113,20 @@ export const handler = async (
       await sendOwnerNewBookingEmail(fresh, details, booking.start as string | undefined);
     } catch (err) {
       console.error("owner email (prebooked->booked) failed", err);
+    }
+
+    // Pre-agreed solar booking: the form is complete, so the partner invoice
+    // can now be priced (property type + zone) — send it. Re-fetch first: the
+    // owner email above may have just minted the invoice, and a stale object
+    // would create a duplicate in QuickBooks. Best-effort — the owner email
+    // already carries the same invoice as a fallback.
+    if (isSolarJob(job)) {
+      try {
+        const fresh = (await getJobByToken(token)) ?? job;
+        await sendSolarPartnerInvoiceEmail(fresh);
+      } catch (err) {
+        console.error("solar partner invoice email failed", err);
+      }
     }
   }
 

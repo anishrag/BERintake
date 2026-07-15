@@ -1,8 +1,14 @@
 // Build QuickBooks invoices for a job: ensure a Customer + a "BER Assessment"
 // service item exist, then create the invoice and fetch its PDF.
 
-import { resolveJobPrice, setInvoice } from "./jobs";
+import {
+  claimSolarDiscount,
+  releaseSolarDiscount,
+  resolveJobPrice,
+  setInvoice,
+} from "./jobs";
 import { qbFetch } from "./quickbooks";
+import { isSolarJob, solarDiscount, solarPartner } from "./solarPartner";
 import type { ClientDetails, Job } from "./types";
 
 const MV = "minorversion=65";
@@ -44,6 +50,10 @@ or send to @cannyg5igz on Revolut`;
 //     inclusive survey portion.
 //   - "Outlay SEAI publishing fee": the flat fee at 0% / No VAT (QB_OUTLAY_TAX_CODE_ID).
 const SEAI_PUBLISHING_FEE = 30;
+// Auctioneera referrals: their commission, as a fraction of the EX-VAT survey
+// fee (the SEAI fee is excluded from the base). Deducted on the invoice as a
+// negative line that carries standard VAT itself.
+const AUCTIONEERA_COMMISSION_RATE = 0.15;
 // Standard VAT rate (percent) applied to the survey line. Override with QB_TAX_RATE.
 const vatRatePercent = () => Number(process.env.QB_TAX_RATE) || 23;
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -119,6 +129,26 @@ async function ensureCustomer(
   return created.Customer.Id;
 }
 
+// The QuickBooks customer for the solar partner — /newsolar invoices bill this
+// company, not the homeowner. One shared customer across all solar jobs.
+async function ensureSolarPartnerCustomer(): Promise<string> {
+  const partner = solarPartner();
+  const q = await qbQuery(
+    `SELECT Id FROM Customer WHERE DisplayName = '${esc(partner.name)}'`,
+  );
+  const existing = q.QueryResponse?.Customer?.[0];
+  if (existing) return existing.Id;
+
+  const created = await qbPost("customer", {
+    DisplayName: partner.name,
+    PrimaryEmailAddr: partner.email ? { Address: partner.email } : undefined,
+    BillAddr: partner.address
+      ? { Line1: partner.address, Country: "Ireland" }
+      : undefined,
+  });
+  return created.Customer.Id;
+}
+
 // Find a Service item by name, creating it (posting to the first income account)
 // if it doesn't exist yet.
 async function ensureItem(name: string): Promise<string> {
@@ -158,19 +188,32 @@ export async function ensureInvoiceForJob(
   const price = await resolveJobPrice(job);
   if (!price) throw new Error("no-price");
 
+  // Solar-partner jobs bill the partner company; everything else the client.
+  const solar = isSolarJob(job);
   const address = (job.keyDetails as { address?: string } | undefined)?.address;
-  const customerId = await ensureCustomer(job.client, address);
+  const customerId = solar
+    ? await ensureSolarPartnerCustomer()
+    : await ensureCustomer(job.client, address);
+  const billEmail = solar ? solarPartner().email : job.client.email;
   const berItemId = await ensureItem("BER Assessment");
   const seaiItemId = await ensureItem("SEAI Fee");
   const surveyTax = await surveyTaxCode();
   const outlayTax = await outlayTaxCode();
   const dueDate = surveyDueDate(job);
 
-  // Amounts are sent tax-EXCLUSIVE (net); QB adds VAT on top. The survey's net is
-  // chosen so net + VAT == the quoted (VAT-inclusive) survey portion, with no
-  // stray cent. The SEAI fee is a flat no-VAT line.
-  const surveyGross = Math.max(0, price - SEAI_PUBLISHING_FEE);
-  const surveyNet = netForInclusiveGross(surveyGross, vatRatePercent());
+  // Amounts are sent tax-EXCLUSIVE (net); QB adds VAT on top. The SEAI fee is
+  // a flat no-VAT line in both cases.
+  //  - Client-billed: the quoted price is the FINAL total (VAT and SEAI fee
+  //    included) — back-calculate the survey net so the invoice lands on it
+  //    with no stray cent.
+  //  - Solar-partner: the table price (solar.env) is the survey fee EX VAT —
+  //    it IS the net, and the SEAI fee goes on top.
+  const surveyNet = solar
+    ? round2(price)
+    : netForInclusiveGross(
+        Math.max(0, price - SEAI_PUBLISHING_FEE),
+        vatRatePercent(),
+      );
   const line = (
     itemId: string,
     amount: number,
@@ -189,19 +232,81 @@ export async function ensureInvoiceForJob(
     };
   };
 
+  // On a partner-billed invoice the line must identify WHOSE property was
+  // surveyed — the partner sees many of these.
+  const who = [job.client.name, address].filter(Boolean).join(", ");
+  // Auctioneera jobs may be created before the eircode is known — fall back to
+  // the form address rather than an empty description.
+  const site = job.client.eircode || address || "the property";
+  const surveyDesc =
+    solar && who
+      ? `BER survey of ${who} (${job.client.eircode})`
+      : `BER survey of ${site}`;
+  // Every line carries the SAME service date: QuickBooks' PDF template sorts
+  // lines by service date (undated lines first), so a lone dated line ignores
+  // LineNum and sinks to the bottom. Equal dates make LineNum the tiebreaker.
+  const lines = [
+    line(berItemId, surveyNet, surveyDesc, surveyTax, dueDate),
+    line(seaiItemId, SEAI_PUBLISHING_FEE, "SEAI publishing fee", outlayTax, dueDate),
+  ];
+  let memo = PAYMENT_MEMO;
+
+  // Auctioneera referral: the client already paid Auctioneera the full quoted
+  // price, so no payment is due on this invoice — it documents the fee and
+  // deducts Auctioneera's commission (15% of the ex-VAT survey fee, itself
+  // carrying standard VAT). The total is what Auctioneera remits to us.
+  if (job.billTo === "auctioneera") {
+    const commissionNet = round2(AUCTIONEERA_COMMISSION_RATE * surveyNet);
+    const commissionItemId = await ensureItem("Auctioneera Commission");
+    lines.push(
+      line(
+        commissionItemId,
+        -commissionNet,
+        `Auctioneera commission (${AUCTIONEERA_COMMISSION_RATE * 100}% of the ex-VAT survey fee)`,
+        surveyTax,
+        dueDate,
+      ),
+    );
+    memo = "Paid in full via Auctioneera — no payment is due.";
+  }
+
+  // Partner discount deal (solar.env): −€amount (standard VAT applies, so the
+  // VAT shrinks too) on each of the agreed number of invoices, tracked by an
+  // atomic counter. The item is ensured BEFORE claiming so the claim→create
+  // window stays minimal; a failed create hands the claim back below.
+  const dealConfigured = solar && solarDiscount() !== undefined;
+  const discountItemId = dealConfigured
+    ? await ensureItem("Partner Discount")
+    : undefined;
+  const discount = dealConfigured ? await claimSolarDiscount() : undefined;
+  if (discount && discountItemId) {
+    const label = `€${discount.amount} discount for next ${discount.total} BERs (${discount.seq}/${discount.total})`;
+    lines.push(line(discountItemId, -discount.amount, label, surveyTax, dueDate));
+    memo = `${label}\n\n${PAYMENT_MEMO}`;
+  }
+
+  // Explicit LineNum pins the display order (survey → SEAI fee → any
+  // commission/discount) — without it QuickBooks may reorder lines on the PDF.
+  lines.forEach((l: any, i) => {
+    l.LineNum = i + 1;
+  });
+
   const invoicePayload: any = {
-    Line: [
-      line(berItemId, surveyNet, `BER survey of ${job.client.eircode}`, surveyTax, dueDate),
-      line(seaiItemId, SEAI_PUBLISHING_FEE, "SEAI publishing fee", outlayTax),
-    ],
+    Line: lines,
     CustomerRef: { value: customerId },
-    BillEmail: job.client.email ? { Address: job.client.email } : undefined,
-    CustomerMemo: { value: PAYMENT_MEMO },
+    BillEmail: billEmail ? { Address: billEmail } : undefined,
+    CustomerMemo: { value: memo },
   };
   if (dueDate) invoicePayload.DueDate = dueDate;
   if (surveyTax || outlayTax) invoicePayload.GlobalTaxCalculation = "TaxExcluded";
 
-  const created = await qbPost("invoice", invoicePayload);
+  let created: any;
+  try {
+    created = await qbPost("invoice", invoicePayload);
+  } catch (err) {
+    if (discount) await releaseSolarDiscount();
+    throw err;
+  }
 
   const inv = created.Invoice;
   const meta = {

@@ -85,6 +85,12 @@ export interface Job {
   token: string; // unguessable id used in the client-facing URL
   status: JobStatus;
   source: JobSource;
+  // Which billing pipeline the job follows. Absent = the client pays (default).
+  // "solar_partner" = created via /newsolar: the client pays nothing and the
+  // solar partner (shared/solarPartner.ts) is invoiced instead.
+  // "auctioneera" = the client already paid Auctioneera in full; the invoice
+  // (shown to the client) deducts Auctioneera's commission.
+  billTo?: "solar_partner" | "auctioneera";
   partnerName?: string; // set when source === "partner" (referral tracking)
   note?: string;
   postWorks?: boolean; // client claims a post-works BER (pre-works done by us <6 months ago) → -€200

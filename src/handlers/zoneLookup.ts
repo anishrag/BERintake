@@ -7,7 +7,7 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { geocodeBudgetOk, getCachedZone, setCachedZone } from "../shared/geocache";
-import { computeQuotePricing, needsGeocode } from "../shared/pricing";
+import { computeQuotePricing, needsGeocode, pricesForArea } from "../shared/pricing";
 import { allowRequest, clientIp } from "../shared/rateLimit";
 import { hydrateSecrets } from "../shared/secrets";
 
@@ -35,7 +35,12 @@ export const handler = async (
   if (geo) {
     const cached = await getCachedZone(eircode);
     if (cached) {
-      return json(200, { serviceArea: cached.serviceArea, prices: cached.prices });
+      // Only the zone is trusted from the cache — prices are re-derived from
+      // the live table so a price change never serves stale cached prices.
+      return json(200, {
+        serviceArea: cached.serviceArea,
+        prices: pricesForArea(cached.serviceArea),
+      });
     }
     if (!(await geocodeBudgetOk())) {
       // Daily geocode budget exhausted — degrade rather than pay.

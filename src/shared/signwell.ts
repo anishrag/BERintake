@@ -3,6 +3,7 @@
 // Template field API IDs must match those set in the SignWell template.
 
 import { resolveJobPrice } from "./jobs";
+import { isSolarJob, solarPartner } from "./solarPartner";
 import type { Job } from "./types";
 
 const API_URL = "https://www.signwell.com/api/v1/document_templates/documents";
@@ -57,7 +58,16 @@ export async function createLoeDocument(job: Job): Promise<LoeResult> {
     { api_id: "client_address", value: kd.address || "" },
     { api_id: "client_eircode", value: job.client.eircode },
     { api_id: "letter_date", value: fmtDate() },
-    { api_id: "ber_fee", value: price != null ? String(price) : "" },
+    // Solar-partner jobs: the client owes nothing, so the letter's fee line
+    // names the payer instead of an amount.
+    {
+      api_id: "ber_fee",
+      value: isSolarJob(job)
+        ? `Paid by ${solarPartner().name}`
+        : price != null
+          ? String(price)
+          : "",
+    },
     { api_id: "year_built", value: kd.yearBuilt ? String(kd.yearBuilt) : "" },
     { api_id: "year_extension", value: extensionsSummary(kd) },
   ];

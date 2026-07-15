@@ -7,6 +7,13 @@ import { BOT_STATE_TABLE, ddb } from "./db";
 
 // /newquote: name → email → phone → eircode (client does the rest online).
 // /newclient: also size → datetime → price (pre-agreed on the phone).
+// /newsolar: name → email → phone → eircode only — the client picks property
+//            type & slot online; billed to the solar partner, not the client.
+// /newsolar_arranged: like /newsolar but with a pre-agreed slot: also datetime
+//            (no size/price — the client still picks property type online).
+// /newauctioneera: client already paid Auctioneera; only email + price are
+//            required (name/phone/eircode skippable — the form backfills them);
+//            the client books their own slot.
 export type BotStep =
   | "name"
   | "email"
@@ -16,7 +23,12 @@ export type BotStep =
   | "datetime"
   | "price";
 
-export type BotFlow = "quote" | "client";
+export type BotFlow =
+  | "quote"
+  | "client"
+  | "solar"
+  | "solar_arranged"
+  | "auctioneera";
 
 export interface BotDraft {
   name?: string;

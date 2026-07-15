@@ -27,6 +27,10 @@ export const handler = async (): Promise<{ quote: number; loe: number }> => {
   // #1 — quote email for jobs that got a quote but haven't booked. Skipped if
   // they clicked "save for later" (that email already gave them a resume link).
   for (const job of await findByStatus("quoted")) {
+    // Special billing pipelines don't get the quote email: solar clients never
+    // see a price, and Auctioneera clients have already paid — the email's
+    // "your quote is €X" framing is wrong for both.
+    if (job.billTo) continue;
     if (job.sentEmails?.includes("quote")) continue;
     if (job.sentEmails?.includes("save_for_later")) continue;
     const quotedAt = Date.parse((job.quote as any)?.quotedAt ?? job.updatedAt);

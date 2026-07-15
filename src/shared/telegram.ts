@@ -37,15 +37,16 @@ export async function tgEditText(
   chatId: number | string,
   messageId: number,
   text: string,
+  replyMarkup?: unknown,
 ): Promise<void> {
   await call("editMessageText", {
     chat_id: chatId,
     message_id: messageId,
     text,
     parse_mode: "HTML",
+    reply_markup: replyMarkup,
   });
 }
-
 export async function tgAnswerCallback(
   callbackId: string,
   text?: string,

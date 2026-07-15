@@ -10,6 +10,7 @@ import { escapeHtml } from "./html";
 import { clientLink } from "./jobs";
 import { ensureInvoiceForJob, getInvoicePdf } from "./qbInvoice";
 import { getSignedLoePdf } from "./signwell";
+import { isSolarJob, solarPartner } from "./solarPartner";
 import type { Job } from "./types";
 
 // Best-effort attachment fetchers — never let a missing PDF block the email.
@@ -225,11 +226,12 @@ Cannygreen`;
 
   // Always attach the signed letter of engagement. Attach the invoice too, but
   // only if the LoE-nudge email (#2, which carries it) wasn't sent — so the
-  // client never gets the invoice twice.
+  // client never gets the invoice twice. Solar jobs: the invoice belongs to the
+  // partner, never the client.
   const attachments: Attachment[] = [];
   const loe = await signedLoeAttachment(job);
   if (loe) attachments.push(loe);
-  if (!job.sentEmails?.includes("loe_nudge")) {
+  if (!isSolarJob(job) && !job.sentEmails?.includes("loe_nudge")) {
     const inv = await invoiceAttachment(job);
     if (inv) attachments.push(inv);
   }
@@ -321,7 +323,8 @@ Cannygreen`;
 </div>`;
 
   // Attach the invoice — this is the email that carries it before signing.
-  const inv = await invoiceAttachment(job);
+  // Solar jobs: the invoice goes to the partner, never the client.
+  const inv = isSolarJob(job) ? null : await invoiceAttachment(job);
   await deliver({
     to: job.client.email,
     subject: "Cannygreen BER - One step left, sign your letter of engagement",
@@ -380,6 +383,200 @@ Cannygreen`;
     subject: "Cannygreen BER - A couple of details before your assessment",
     text,
     html,
+  });
+}
+
+// Sent when a /newsolar job is created: the solar partner has arranged (and
+// pays for) the assessment — the client just picks a slot and adds details.
+// The email deliberately never mentions price or payment.
+export async function sendSolarBookingEmail(job: Job): Promise<void> {
+  const firstName = job.client.name.split(" ")[0] || "there";
+  const link = clientLink(job.token);
+  const partnerName = solarPartner().name;
+
+  const text = `Hi ${firstName},
+
+${partnerName} has arranged a BER assessment for your home at ${job.client.eircode}, carried out by us at Cannygreen. There's nothing for you to pay — the cost is covered by ${partnerName}.
+
+To book it in, just select your property type, pick a time that suits you, and add a few details about the property:
+
+${link}
+
+What to expect:
+- The assessment takes about 1 hour at the property. I'll need access to all parts of the house, and I'll take measurements and photographs as evidence.
+- Once I've gathered everything on site, it takes up to a week to compile it all and issue your BER certificate.
+
+If you have any questions, just reply to this email.
+
+Kind regards,
+Anish
+Cannygreen`;
+
+  const html = `<div style="${SHELL}">
+  <p>Hi ${escapeHtml(firstName)},</p>
+  <p><strong>${escapeHtml(partnerName)}</strong> has arranged a BER assessment for your home at <strong>${escapeHtml(job.client.eircode)}</strong>, carried out by us at Cannygreen. There's <strong>nothing for you to pay</strong> — the cost is covered by ${escapeHtml(partnerName)}.</p>
+  <p>To book it in, just select your property type, pick a time that suits you, and add a few details about the property:</p>
+  <p style="text-align:center;margin:28px 0">
+    <a href="${link}" style="${BTN}">Book my assessment</a>
+  </p>
+  <p style="margin-bottom:6px"><strong>What to expect</strong></p>
+  <ul style="margin-top:0;padding-left:20px">
+    <li>The assessment takes about <strong>1 hour</strong> at the property. I'll need access to all parts of the house, and I'll take measurements and photographs as evidence.</li>
+    <li>Once I've gathered everything on site, it takes <strong>up to a week</strong> to compile it all and issue your BER certificate.</li>
+  </ul>
+  <p>If you have any questions, just reply to this email.</p>
+  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
+</div>`;
+
+  await sendEmail({
+    to: job.client.email,
+    subject: "Cannygreen BER - Book your BER assessment",
+    text,
+    html,
+  });
+}
+
+// Sent when a /newauctioneera job is created: they just book a slot and add
+// details. Deliberately says NOTHING about payment — Auctioneera's own process
+// handles that side and we don't know where the client stands in it. Their
+// invoice (with the commission deduction) reaches them via the normal flow.
+export async function sendAuctioneeraBookingEmail(job: Job): Promise<void> {
+  const firstName = job.client.name.split(" ")[0] || "there";
+  const link = clientLink(job.token);
+
+  const text = `Hi ${firstName},
+
+Thanks for arranging your BER assessment through Auctioneera.
+
+To book it in, just select your property type, pick a time that suits you, and add a few details about the property:
+
+${link}
+
+What to expect:
+- The assessment takes about 1 hour at the property. I'll need access to all parts of the house, and I'll take measurements and photographs as evidence.
+- Once I've gathered everything on site, it takes up to a week to compile it all and issue your BER certificate.
+
+If you have any questions, just reply to this email.
+
+Kind regards,
+Anish
+Cannygreen`;
+
+  const html = `<div style="${SHELL}">
+  <p>Hi ${escapeHtml(firstName)},</p>
+  <p>Thanks for arranging your BER assessment through <strong>Auctioneera</strong>.</p>
+  <p>To book it in, just select your property type, pick a time that suits you, and add a few details about the property:</p>
+  <p style="text-align:center;margin:28px 0">
+    <a href="${link}" style="${BTN}">Book my assessment</a>
+  </p>
+  <p style="margin-bottom:6px"><strong>What to expect</strong></p>
+  <ul style="margin-top:0;padding-left:20px">
+    <li>The assessment takes about <strong>1 hour</strong> at the property. I'll need access to all parts of the house, and I'll take measurements and photographs as evidence.</li>
+    <li>Once I've gathered everything on site, it takes <strong>up to a week</strong> to compile it all and issue your BER certificate.</li>
+  </ul>
+  <p>If you have any questions, just reply to this email.</p>
+  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
+</div>`;
+
+  await sendEmail({
+    to: job.client.email,
+    subject: "Cannygreen BER - Book your BER assessment",
+    text,
+    html,
+  });
+}
+
+// Sent for a pre-agreed solar booking (/newsolar_arranged): the slot is set
+// and the partner pays — the client adds property type + details and signs.
+export async function sendSolarPrefilledEmail(job: Job): Promise<void> {
+  const firstName = job.client.name.split(" ")[0] || "there";
+  const link = clientLink(job.token);
+  const partnerName = solarPartner().name;
+  const when = apptWhen(job);
+
+  const text = `Hi ${firstName},
+
+${partnerName} has arranged a BER assessment for your home at ${job.client.eircode}${when ? `, booked for ${when}` : ""}, carried out by us at Cannygreen. There's nothing for you to pay — the cost is covered by ${partnerName}.
+
+To confirm it, please open the link below to select your property type, add a few details about the property, and sign the letter of engagement:
+
+${link}
+
+If you have any questions, just reply to this email.
+
+Kind regards,
+Anish
+Cannygreen`;
+
+  const html = `<div style="${SHELL}">
+  <p>Hi ${escapeHtml(firstName)},</p>
+  <p><strong>${escapeHtml(partnerName)}</strong> has arranged a BER assessment for your home at <strong>${escapeHtml(job.client.eircode)}</strong>${when ? `, booked for <strong>${when}</strong>` : ""}, carried out by us at Cannygreen. There's <strong>nothing for you to pay</strong> — the cost is covered by ${escapeHtml(partnerName)}.</p>
+  <p>To confirm it, please open the link below to select your property type, add a few details about the property, and sign the letter of engagement:</p>
+  <p style="text-align:center;margin:28px 0">
+    <a href="${link}" style="${BTN}">Add my details</a>
+  </p>
+  <p>If you have any questions, just reply to this email.</p>
+  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
+</div>`;
+
+  await sendEmail({
+    to: job.client.email,
+    subject: "Cannygreen BER - A couple of details before your assessment",
+    text,
+    html,
+  });
+}
+
+/**
+ * Invoice email to the solar partner, sent when the client books their slot.
+ * Carries the QuickBooks invoice PDF (billed to the partner). No-op (with a
+ * loud log) if SOLAR_PARTNER_EMAIL isn't configured — the owner's new-booking
+ * email still carries the invoice, so it's never lost.
+ */
+export async function sendSolarPartnerInvoiceEmail(job: Job): Promise<void> {
+  const partner = solarPartner();
+  if (!partner.email) {
+    console.error(
+      `solar partner email not configured — invoice for ${job.jobId} not sent to partner`,
+    );
+    return;
+  }
+
+  const inv = await ensureInvoiceForJob(job);
+  const pdf = await getInvoicePdf(inv.id);
+  const when = apptWhen(job);
+  const c = job.client;
+  const address = (job.keyDetails as any)?.address as string | undefined;
+  const property = [c.name, address, c.eircode].filter(Boolean).join(", ");
+
+  const intro = `A BER assessment you arranged has been booked${when ? ` for ${when}` : ""}. The invoice${inv.docNumber ? ` (${inv.docNumber})` : ""}${inv.total != null ? ` for €${inv.total}` : ""} is attached.`;
+
+  const text = `Hello,
+
+${intro}
+
+Property: ${property}
+
+Payment details are on the invoice. If you have any questions, just reply to this email.
+
+Kind regards,
+Anish
+Cannygreen`;
+
+  const html = `<div style="${SHELL}">
+  <p>Hello,</p>
+  <p>${escapeHtml(intro)}</p>
+  <p><strong>Property:</strong> ${escapeHtml(property)}</p>
+  <p>Payment details are on the invoice. If you have any questions, just reply to this email.</p>
+  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
+</div>`;
+
+  await deliver({
+    to: partner.email,
+    subject: `Cannygreen BER - Invoice${inv.docNumber ? ` ${inv.docNumber}` : ""} — assessment booked for ${c.eircode}`,
+    text,
+    html,
+    attachments: [{ filename: "invoice.pdf", content: pdf }],
   });
 }
 

@@ -11,6 +11,7 @@ import {
 import { JOBS_TABLE, ddb } from "./db";
 import { newJobId, newToken } from "./ids";
 import { POST_WORKS_DISCOUNT, computeQuotePricing, type HouseType } from "./pricing";
+import { solarDiscount, solarPriceFor } from "./solarPartner";
 import { fetchSatelliteImage } from "./satellite";
 import { jobPrefix, putObject } from "./s3";
 import type {
@@ -25,6 +26,7 @@ import type {
 export interface CreateJobInput {
   client: ClientDetails;
   source: JobSource;
+  billTo?: "solar_partner" | "auctioneera";
   partnerName?: string;
   note?: string;
   postWorks?: boolean;
@@ -39,6 +41,7 @@ export async function createJob(input: CreateJobInput): Promise<Job> {
     token: newToken(),
     status: input.requireReview ? "pending_review" : "quote_sent",
     source: input.source,
+    billTo: input.billTo,
     partnerName: input.partnerName,
     note: input.note,
     postWorks: input.postWorks,
@@ -328,6 +331,7 @@ export async function clearHold(jobId: string): Promise<void> {
 export async function setDetails(
   jobId: string,
   details: Record<string, unknown>,
+  opts?: { backfillEircode?: boolean },
 ): Promise<void> {
   const sets = ["keyDetails = :d", "updatedAt = :u"];
   const names: Record<string, string> = {};
@@ -349,6 +353,15 @@ export async function setDetails(
   if (phone) {
     sets.push("client.phone = :cp");
     values[":cp"] = phone;
+  }
+  // Eircode backfill is opt-in: callers set it only when the job was created
+  // WITHOUT one (Auctioneera), so a client can't shift an existing job's
+  // pricing/geocode basis by editing the form field.
+  const eircode =
+    typeof details.eircode === "string" ? details.eircode.trim() : "";
+  if (opts?.backfillEircode && eircode) {
+    sets.push("client.eircode = :ce");
+    values[":ce"] = eircode;
   }
 
   await ddb.send(
@@ -467,9 +480,12 @@ export async function setAgreedPrice(jobId: string, price: number): Promise<void
  * The authoritative price for a job, for the invoice and the LoE fee. Never
  * trusts a client-supplied price:
  *   1. an explicitly agreed price (owner/contractor) wins;
- *   2. otherwise the server-computed zone price for the eircode + property type
+ *   2. solar-partner jobs: the partner's agreed table (solar.env) for the
+ *      property type the client selected — never the public zone prices, and
+ *      no post-works discount. Undefined until the table is configured;
+ *   3. otherwise the server-computed zone price for the eircode + property type
  *      (recomputed and cached if not already stored);
- *   3. otherwise undefined (caller treats as "no price").
+ *   4. otherwise undefined (caller treats as "no price").
  */
 export async function resolveJobPrice(job: Job): Promise<number | undefined> {
   if (typeof job.agreedPrice === "number") return job.agreedPrice;
@@ -477,6 +493,21 @@ export async function resolveJobPrice(job: Job): Promise<number | undefined> {
   const propertyType = (job.quote as { propertyType?: string } | undefined)
     ?.propertyType;
   if (!propertyType) return undefined;
+
+  if (job.billTo === "solar_partner") {
+    // Same zone resolution as the public prices (cached on the job by the
+    // first form load), but read off the partner's table.
+    let area = job.serviceArea;
+    if (!area) {
+      const eircode = job.client?.eircode;
+      if (!eircode) return undefined;
+      const computed = await computeQuotePricing(eircode);
+      if (!computed) return undefined;
+      await setQuotePricing(job.jobId, computed.serviceArea, computed.prices);
+      area = computed.serviceArea;
+    }
+    return solarPriceFor(area, propertyType);
+  }
 
   let base = job.quotePrices?.[propertyType];
   if (typeof base !== "number") {
@@ -491,6 +522,66 @@ export async function resolveJobPrice(job: Job): Promise<number | undefined> {
   // Post-works BER: a fixed discount off the zone price (server-side, so the
   // amount can't be tampered — the client only claims eligibility, we verify).
   return job.postWorks ? Math.max(0, base - POST_WORKS_DISCOUNT) : base;
+}
+
+// The partner-discount counter lives as a special item in the jobs table
+// (the same trick botState uses for its upd# rows) — atomic, no extra table.
+// `used` counts ALL discounts given, including the pre-counter ones seeded
+// from SOLAR_DISCOUNT_ALREADY_USED, so its value is directly the "n" in n/15.
+const SOLAR_DISCOUNT_COUNTER_KEY = "solar#discountCounter";
+
+/**
+ * Atomically claim one partner discount. Returns its sequence number (n of
+ * total) and amount, or undefined when no deal is configured or the quota is
+ * spent. Call releaseSolarDiscount() if invoice creation then fails.
+ */
+export async function claimSolarDiscount(): Promise<
+  { seq: number; amount: number; total: number } | undefined
+> {
+  const deal = solarDiscount();
+  if (!deal) return undefined;
+  try {
+    const res = await ddb.send(
+      new UpdateCommand({
+        TableName: JOBS_TABLE,
+        Key: { jobId: SOLAR_DISCOUNT_COUNTER_KEY },
+        UpdateExpression: "SET #u = if_not_exists(#u, :seed) + :one",
+        ConditionExpression: "attribute_not_exists(#u) OR #u < :max",
+        ExpressionAttributeNames: { "#u": "used" },
+        ExpressionAttributeValues: {
+          ":seed": deal.alreadyUsed,
+          ":one": 1,
+          ":max": deal.total,
+        },
+        ReturnValues: "UPDATED_NEW",
+      }),
+    );
+    const seq = Number(res.Attributes?.used);
+    if (!Number.isFinite(seq)) return undefined;
+    return { seq, amount: deal.amount, total: deal.total };
+  } catch (e: any) {
+    // Quota spent — every remaining invoice is full price.
+    if (e?.name === "ConditionalCheckFailedException") return undefined;
+    throw e;
+  }
+}
+
+/** Hand back a claimed discount (the invoice failed after claiming). */
+export async function releaseSolarDiscount(): Promise<void> {
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: JOBS_TABLE,
+        Key: { jobId: SOLAR_DISCOUNT_COUNTER_KEY },
+        UpdateExpression: "SET #u = #u - :one",
+        ConditionExpression: "#u > :zero",
+        ExpressionAttributeNames: { "#u": "used" },
+        ExpressionAttributeValues: { ":one": 1, ":zero": 0 },
+      }),
+    );
+  } catch (err) {
+    console.error("could not release solar discount claim", err);
+  }
 }
 
 export function clientLink(token: string): string {

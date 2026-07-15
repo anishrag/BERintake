@@ -8,6 +8,7 @@ import type {
 import { getJobByToken } from "../shared/jobs";
 import { ensureInvoiceForJob, getInvoicePdf } from "../shared/qbInvoice";
 import { hydrateSecrets } from "../shared/secrets";
+import { isSolarJob } from "../shared/solarPartner";
 
 export const handler = async (
   event: APIGatewayProxyEventV2,
@@ -18,6 +19,9 @@ export const handler = async (
 
   const job = await getJobByToken(token);
   if (!job || job.status === "discarded") return { statusCode: 404, body: "not found" };
+  // Solar-partner jobs: the invoice belongs to the partner — the client link
+  // must not be able to read it.
+  if (isSolarJob(job)) return { statusCode: 404, body: "not found" };
 
   try {
     const inv = await ensureInvoiceForJob(job);
