@@ -114,6 +114,16 @@ export async function requestOwnerConfirmation(
     notifiedAt: new Date().toISOString(),
   });
 
+  // One reject button per applicable reason, so a booking gated for BOTH can be
+  // declined with the right message (distance vs. no pre-works BER on record).
+  const rejectRow: { text: string; callback_data: string }[] = [];
+  if (reasons.includes("outside-zone")) {
+    rejectRow.push({ text: "🗑 Reject (too far)", callback_data: `rbookfar:${job.jobId}` });
+  }
+  if (reasons.includes("post-works")) {
+    rejectRow.push({ text: "🗑 Reject (no pre-works BER)", callback_data: `rbooknopre:${job.jobId}` });
+  }
+
   const name = job.client.name || "(name TBC)";
   await notifyOwner(
     `🔔 <b>Booking needs your confirmation</b>\n\n` +
@@ -125,10 +135,8 @@ export async function requestOwnerConfirmation(
       `\n\nNothing has been booked or invoiced. Confirm to let them proceed, or reject.`,
     {
       inline_keyboard: [
-        [
-          { text: "✅ Confirm", callback_data: `cbook:${job.jobId}` },
-          { text: "🗑 Reject", callback_data: `rbook:${job.jobId}` },
-        ],
+        [{ text: "✅ Confirm", callback_data: `cbook:${job.jobId}` }],
+        rejectRow,
       ],
     },
   );
@@ -150,16 +158,24 @@ export async function approveBooking(job: Job): Promise<void> {
 
 /**
  * The owner has rejected the booking: discard the job (the link stops working)
- * and email the client a polite decline explaining why.
+ * and email the client a polite decline explaining why. `emailReasons` lets the
+ * owner pick which decline to send when a booking is gated for more than one
+ * reason (a reject button per reason); it falls back to all gate reasons.
  */
-export async function rejectBooking(job: Job): Promise<void> {
-  const reasons = job.confirmGate?.reasons ?? (await confirmationReasons(job));
+export async function rejectBooking(
+  job: Job,
+  emailReasons?: ConfirmReason[],
+): Promise<void> {
+  const gateReasons = job.confirmGate?.reasons ?? (await confirmationReasons(job));
   await setConfirmGate(job.jobId, {
-    reasons,
+    reasons: gateReasons,
     status: "rejected",
     notifiedAt: job.confirmGate?.notifiedAt ?? new Date().toISOString(),
     decidedAt: new Date().toISOString(),
   });
   await setJobStatus(job.jobId, "discarded");
-  await sendBookingRejectedEmail(job, reasons);
+  await sendBookingRejectedEmail(
+    job,
+    emailReasons?.length ? emailReasons : gateReasons,
+  );
 }

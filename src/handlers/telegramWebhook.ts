@@ -48,6 +48,7 @@ import {
   tgEditText,
   tgSend,
 } from "../shared/telegram";
+import type { ConfirmReason } from "../shared/types";
 import { hydrateSecrets } from "../shared/secrets";
 
 // Telegram retries on non-200, so we always return 200 even on internal errors.
@@ -951,14 +952,29 @@ async function handleCallback(cb: any): Promise<void> {
     return;
   }
 
-  if (action === "rbook") {
-    await rejectBooking(job);
-    await tgAnswerCallback(cb.id, "Rejected");
+  // Reject a gated booking. rbookfar / rbooknopre pick which decline email to
+  // send (distance vs. no pre-works BER) when a booking is gated for both;
+  // rbook is the generic fallback (e.g. an older single-reason message).
+  if (action === "rbook" || action === "rbookfar" || action === "rbooknopre") {
+    const emailReasons: ConfirmReason[] | undefined =
+      action === "rbookfar"
+        ? ["outside-zone"]
+        : action === "rbooknopre"
+          ? ["post-works"]
+          : undefined;
+    const label =
+      action === "rbookfar"
+        ? "Rejected (too far)"
+        : action === "rbooknopre"
+          ? "Rejected (no pre-works BER)"
+          : "Rejected";
+    await rejectBooking(job, emailReasons);
+    await tgAnswerCallback(cb.id, label);
     if (chatId && messageId) {
       await tgEditText(
         chatId,
         messageId,
-        `🗑 Rejected booking for <b>${escapeHtml(job.client.name || job.client.email)}</b> — job discarded, client emailed.`,
+        `🗑 ${label} — <b>${escapeHtml(job.client.name || job.client.email)}</b> discarded, client emailed.`,
       );
     }
     return;
