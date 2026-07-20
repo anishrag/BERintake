@@ -137,6 +137,9 @@ read_kv("turnstile.env", {"TURNSTILE_SECRET": "TURNSTILE_SECRET"}, secrets)
 # Shared key the BER_APP tablet sends as x-surveyor-key (cloud sync + bug-report
 # upload). Blank/absent => /surveyor/* endpoints reject all requests.
 read_kv("surveyor.env", {"SURVEYOR_ACCESS_KEY": "SURVEYOR_ACCESS_KEY"}, secrets)
+# Shared key the Gmail add-on sends as x-addon-key (checklist lookup + toggle).
+# Blank/absent => /jobs/lookup + /jobs/{id}/checklist reject all requests.
+read_kv("addon.env", {"ADDON_ACCESS_KEY": "ADDON_ACCESS_KEY"}, secrets)
 # ALLOWED_CHAT_ID is not a secret (it's an id) — passed as a stack parameter.
 read_kv("telegram.env", {"ALLOWED_CHAT_ID": "AllowedChatId"}, params)
 read_kv("telegram.env", {"TELEGRAM_BOT_TOKEN": "TELEGRAM_BOT_TOKEN",

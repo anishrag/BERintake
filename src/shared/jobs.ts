@@ -18,6 +18,8 @@ import type {
   BerResult,
   BerSeed,
   ClientDetails,
+  DetailsChecklist,
+  DetailsChecklistItem,
   Job,
   JobSource,
   JobStatus,
@@ -172,6 +174,99 @@ export async function setBerResult(
       },
     }),
   );
+}
+
+/**
+ * Seed the post-survey follow-up checklist from the items the tablet requested,
+ * all unticked, and move the job to `details_requested`. Overwrites any prior
+ * checklist (a re-send starts fresh).
+ */
+export async function setDetailsChecklist(
+  jobId: string,
+  items: { itemId: string; label: string }[],
+): Promise<void> {
+  const now = new Date().toISOString();
+  const checklist: DetailsChecklist = {
+    items: items.map((i) => ({ itemId: i.itemId, label: i.label, done: false })),
+    createdAt: now,
+    updatedAt: now,
+  };
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "SET detailsChecklist = :c, #s = :st, updatedAt = :u",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: {
+        ":c": checklist,
+        ":st": "details_requested",
+        ":u": now,
+      },
+    }),
+  );
+}
+
+/**
+ * Apply done/undone toggles to the checklist and persist. Idempotent (setting an
+ * already-done item to done is a no-op). Unknown item ids are ignored. Returns
+ * the updated checklist, or `undefined` if the job has none. When every item is
+ * done the job advances to `details_provided`; if an item is un-ticked back from
+ * a fully-done state it returns to `details_requested`.
+ */
+export async function applyChecklistUpdates(
+  job: Job,
+  updates: { itemId: string; done: boolean }[],
+): Promise<DetailsChecklist | undefined> {
+  const checklist = job.detailsChecklist;
+  if (!checklist) return undefined;
+
+  const byId = new Map(updates.map((u) => [u.itemId, u.done]));
+  const items: DetailsChecklistItem[] = checklist.items.map((it) =>
+    byId.has(it.itemId) ? { ...it, done: byId.get(it.itemId)! } : it,
+  );
+  const now = new Date().toISOString();
+  const updated: DetailsChecklist = {
+    ...checklist,
+    items,
+    updatedAt: now,
+  };
+
+  const allDone = items.length > 0 && items.every((i) => i.done);
+  // Only touch status within the details_* phase, so a toggle can't disturb a
+  // job that has moved on (e.g. already surveyed again).
+  const nextStatus: JobStatus | undefined =
+    job.status === "details_requested" && allDone
+      ? "details_provided"
+      : job.status === "details_provided" && !allDone
+        ? "details_requested"
+        : undefined;
+
+  if (nextStatus) {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: JOBS_TABLE,
+        Key: { jobId: job.jobId },
+        UpdateExpression:
+          "SET detailsChecklist = :c, #s = :st, updatedAt = :u",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":c": updated,
+          ":st": nextStatus,
+          ":u": now,
+        },
+      }),
+    );
+  } else {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: JOBS_TABLE,
+        Key: { jobId: job.jobId },
+        UpdateExpression: "SET detailsChecklist = :c, updatedAt = :u",
+        ExpressionAttributeValues: { ":c": updated, ":u": now },
+      }),
+    );
+  }
+  return updated;
 }
 
 /** All jobs in a given status (via status-index), newest-relevant first. */

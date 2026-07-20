@@ -134,6 +134,23 @@ export interface Job {
   sentEmails?: string[]; // which deferred funnel emails were sent ("quote" | "loe_nudge" | "save_for_later")
   berSeed?: BerSeed;
   ber?: BerResult; // set when the tablet syncs the finished assessment back
+  // The post-survey follow-up checklist: the info/documents requested from the
+  // client (seeded from what the tablet ticked when the request email was sent).
+  // The assessor ticks items off as the client supplies them (Gmail add-on); the
+  // job moves to `details_provided` once every item is done.
+  detailsChecklist?: DetailsChecklist;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
+}
+
+export interface DetailsChecklistItem {
+  itemId: string;
+  label: string;
+  done: boolean;
+}
+
+export interface DetailsChecklist {
+  items: DetailsChecklistItem[];
+  createdAt: string; // when the request was sent
+  updatedAt: string; // last tick
 }

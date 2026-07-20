@@ -16,7 +16,7 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { sendEmail } from "../shared/email";
-import { getJobById, setJobStatus } from "../shared/jobs";
+import { getJobById, setDetailsChecklist } from "../shared/jobs";
 import { hydrateSecrets } from "../shared/secrets";
 import { isSurveyor } from "../shared/surveyorAuth";
 
@@ -56,7 +56,11 @@ export const handler = async (
   if (!job || job.status === "discarded")
     return json(404, { error: "not found" });
 
-  let parsed: { subject?: string; body?: string };
+  let parsed: {
+    subject?: string;
+    body?: string;
+    items?: { itemId?: unknown; label?: unknown }[];
+  };
   try {
     parsed = event.body ? JSON.parse(event.body) : {};
   } catch {
@@ -67,6 +71,19 @@ export const handler = async (
   const body = typeof parsed.body === "string" ? parsed.body : "";
   if (!subject || !body.trim())
     return json(400, { error: "missing subject or body" });
+
+  // The checklist items the tablet ticked — seed the office follow-up checklist.
+  const items = Array.isArray(parsed.items)
+    ? parsed.items
+        .filter(
+          (i): i is { itemId: string; label: string } =>
+            !!i &&
+            typeof i.itemId === "string" &&
+            typeof i.label === "string" &&
+            i.itemId.length > 0,
+        )
+        .map((i) => ({ itemId: i.itemId, label: i.label }))
+    : [];
 
   const clientEmail = job.client?.email;
   // Trial: redirect to the assessor, flag the intended client in the subject.
@@ -82,7 +99,13 @@ export const handler = async (
     html: textToHtml(body),
   });
 
-  await setJobStatus(jobId, "details_requested");
+  // Seed the checklist (all unticked) and move to details_requested.
+  await setDetailsChecklist(jobId, items);
 
-  return json(200, { jobId, status: "details_requested", to });
+  return json(200, {
+    jobId,
+    status: "details_requested",
+    to,
+    itemCount: items.length,
+  });
 };

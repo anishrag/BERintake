@@ -829,6 +829,43 @@ Resources:
           Type: HttpApi
           Properties: { Path: "/surveyor/jobs/{jobId}/ber/request-details", Method: POST }
 
+  # --- Gmail add-on: follow-up checklist (details_requested → details_provided) ---
+  JobsLookupFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/jobsLookup.ts]
+    Properties:
+      Handler: src/handlers/jobsLookup.handler
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { Path: "/jobs/lookup", Method: GET }
+
+  JobsChecklistFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/jobsChecklistUpdate.ts]
+    Properties:
+      Handler: src/handlers/jobsChecklistUpdate.handler
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/jobs/{jobId}/checklist", Method: POST }
+
   SurveyorBugReportCreateFn:
     Type: AWS::Serverless::Function
     Metadata:
