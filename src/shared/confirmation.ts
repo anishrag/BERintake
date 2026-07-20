@@ -13,7 +13,7 @@
 // (see telegramWebhook.ts), which calls approveBooking()/rejectBooking() here.
 
 import { escapeHtml } from "./html";
-import { setConfirmGate, setJobStatus } from "./jobs";
+import { setConfirmGate, setJobStatus, setQuotePricing } from "./jobs";
 import {
   sendBookingConfirmedEmail,
   sendBookingRejectedEmail,
@@ -60,6 +60,31 @@ export async function confirmationReasons(job: Job): Promise<ConfirmReason[]> {
 export async function pendingConfirmation(job: Job): Promise<ConfirmReason[]> {
   if (job.confirmGate?.status === "approved") return [];
   return confirmationReasons(job);
+}
+
+/**
+ * Run the gate as early as possible — at web job creation, when the eircode
+ * (zone) and the post-works checkbox are already in hand. Resolves and caches
+ * the zone up-front (so the quote page doesn't geocode again), and pings the
+ * owner if the booking needs confirming — the quote page then shows the
+ * "needs confirmation" panel on load, before the client fills the form.
+ * Best-effort: never blocks job creation.
+ */
+export async function checkConfirmationOnCreate(job: Job): Promise<void> {
+  try {
+    let checked = job;
+    if (!job.serviceArea && job.client?.eircode) {
+      const priced = await computeQuotePricing(job.client.eircode);
+      if (priced) {
+        await setQuotePricing(job.jobId, priced.serviceArea, priced.prices);
+        checked = { ...job, serviceArea: priced.serviceArea };
+      }
+    }
+    const reasons = await confirmationReasons(checked);
+    if (reasons.length) await requestOwnerConfirmation(checked, reasons);
+  } catch (err) {
+    console.error(`early confirmation check failed for ${job.jobId}`, err);
+  }
 }
 
 // One-line reason, owner-facing (Telegram).

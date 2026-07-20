@@ -6,6 +6,7 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
+import { checkConfirmationOnCreate } from "../shared/confirmation";
 import { escapeHtml } from "../shared/html";
 import { clientLink, createJob } from "../shared/jobs";
 import { sendQuoteRequestEmail } from "../shared/notify";
@@ -80,6 +81,15 @@ export const handler = async (
     postWorks: body.postWorks === true,
     requireReview,
   });
+
+  // Web self-serve: run the owner-confirmation gate now, before the client fills
+  // the booking form. Everything it needs — the eircode (zone) and the
+  // post-works checkbox — is already in hand, so a post-works or out-of-zone
+  // booking is flagged up-front and the quote page greets them with the
+  // "needs confirmation" panel instead of letting them fill everything in first.
+  if (source === "web") {
+    await checkConfirmationOnCreate(job);
+  }
 
   if (job.status === "pending_review") {
     const who = job.partnerName

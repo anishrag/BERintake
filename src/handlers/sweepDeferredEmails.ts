@@ -31,6 +31,10 @@ export const handler = async (): Promise<{ quote: number; loe: number }> => {
     // see a price, and Auctioneera clients have already paid — the email's
     // "your quote is €X" framing is wrong for both.
     if (job.billTo) continue;
+    // Awaiting the owner's confirmation (post-works / outside-zone): never nudge
+    // them to "continue booking" — they can't until the owner confirms, and the
+    // approval email invites them back then. Skips pending and rejected gates.
+    if (job.confirmGate && job.confirmGate.status !== "approved") continue;
     if (job.sentEmails?.includes("quote")) continue;
     if (job.sentEmails?.includes("save_for_later")) continue;
     const quotedAt = Date.parse((job.quote as any)?.quotedAt ?? job.updatedAt);
@@ -47,6 +51,9 @@ export const handler = async (): Promise<{ quote: number; loe: number }> => {
   // #2 — letter-of-engagement nudge for booked jobs not yet signed.
   for (const job of await findByStatus("booked")) {
     if (job.sentEmails?.includes("loe_nudge")) continue;
+    // Belt-and-braces: a booked job has already cleared the gate, but never
+    // nudge one that's somehow still pending confirmation.
+    if (job.confirmGate && job.confirmGate.status !== "approved") continue;
     if (job.loe?.status === "completed") continue;
     const bookedAt = Date.parse((job.booking as any)?.bookedAt ?? job.updatedAt);
     if (!Number.isFinite(bookedAt) || now - bookedAt < LOE_DELAY) continue;
