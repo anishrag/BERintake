@@ -5,6 +5,10 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
+import {
+  pendingConfirmation,
+  requestOwnerConfirmation,
+} from "../shared/confirmation";
 import { getJobByToken } from "../shared/jobs";
 import { ensureInvoiceForJob } from "../shared/qbInvoice";
 import { isSolarJob } from "../shared/solarPartner";
@@ -39,6 +43,14 @@ export const handler = async (
   if (isSolarJob(job)) return json(404, { error: "not found" });
   if (!job.hold && !BOOKED_STATUSES.includes(job.status)) {
     return json(409, { error: "not-ready" });
+  }
+
+  // Owner-confirmation gate: never mint an invoice for a post-works or
+  // outside-zone booking until the owner has confirmed it (ping them once).
+  const reasons = await pendingConfirmation(job);
+  if (reasons.length) {
+    await requestOwnerConfirmation(job, reasons);
+    return json(409, { error: "needs-confirmation", reasons });
   }
 
   try {

@@ -19,6 +19,11 @@ export type JobStatus =
 // scratch on-site (no intake funnel; lands directly as `pulled`).
 export type JobSource = "telegram" | "partner" | "web" | "web_admin" | "tablet";
 
+// Why a client-driven booking needs the owner's confirmation before it commits.
+// "post-works" — the client claims we did their pre-works BER (we can't verify).
+// "outside-zone" — the property geocodes outside our service areas.
+export type ConfirmReason = "post-works" | "outside-zone";
+
 export interface ClientDetails {
   name: string;
   email: string;
@@ -110,6 +115,16 @@ export interface Job {
   keyDetails?: Record<string, unknown>;
   invoice?: { id: string; total?: number; docNumber?: string; createdAt: string };
   loe?: { documentId: string; signingUrl?: string; status: string; createdAt: string };
+  // Owner-confirmation gate for client-driven bookings that need a manual check
+  // before anything commits (an invoice, LoE, or calendar booking): a post-works
+  // claim we can't verify, or an address outside our service zones. See
+  // shared/confirmation.ts. Absent = never gated (proceeds freely).
+  confirmGate?: {
+    reasons: ConfirmReason[]; // why confirmation is needed
+    status: "pending" | "approved" | "rejected";
+    notifiedAt: string; // when the owner was pinged on Telegram
+    decidedAt?: string; // when the owner confirmed / rejected
+  };
   sentEmails?: string[]; // which deferred funnel emails were sent ("quote" | "loe_nudge" | "save_for_later")
   berSeed?: BerSeed;
   ber?: BerResult; // set when the tablet syncs the finished assessment back

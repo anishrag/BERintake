@@ -6,6 +6,10 @@ import type {
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { bookSlot, getEvent, isOpenSlot } from "../shared/calendar";
+import {
+  pendingConfirmation,
+  requestOwnerConfirmation,
+} from "../shared/confirmation";
 import { isHeldByOther, releaseHold } from "../shared/holds";
 import {
   clearHold,
@@ -56,6 +60,19 @@ export const handler = async (
   // Idempotency: already booked — return the existing booking, no re-book.
   if (BOOKED_STATUSES.includes(job.status)) {
     return json(200, { status: job.status, booking: job.booking ?? null, alreadyBooked: true });
+  }
+
+  // Owner-confirmation gate: a post-works or outside-zone booking must be
+  // confirmed by the owner before anything commits. Don't book the slot, mint
+  // an invoice, or seed the tablet — just save the just-submitted details (so
+  // they resume when the owner confirms) and ping the owner once.
+  const reasons = await pendingConfirmation(job);
+  if (reasons.length) {
+    if (details) {
+      await setDetails(job.jobId, details, { backfillEircode: !job.client.eircode });
+    }
+    await requestOwnerConfirmation(job, reasons);
+    return json(409, { error: "needs-confirmation", reasons });
   }
 
   // Guard against double-booking a slot someone else took or holds.

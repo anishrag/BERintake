@@ -18,6 +18,10 @@ import {
   setState,
 } from "../shared/botState";
 import { createBookedEvent } from "../shared/calendar";
+import {
+  approveBooking,
+  rejectBooking,
+} from "../shared/confirmation";
 import { escapeHtml } from "../shared/html";
 import { computeQuotePricing } from "../shared/pricing";
 import {
@@ -332,6 +336,32 @@ async function advance(
   text: string,
 ): Promise<void> {
   const draft = state.draft;
+
+  // Confirming an out-of-zone booking: the owner types the agreed price, which
+  // both prices the job (agreedPrice overrides the €400 flat rate) and approves
+  // the confirmation gate.
+  if (state.flow === "confirm_price") {
+    const n = Number(text.replace(/[€,\s]/g, ""));
+    if (!Number.isFinite(n) || n <= 0) {
+      await tgSend(chatId, "Please enter the agreed price as a number, e.g. <code>450</code>.");
+      return;
+    }
+    await clearState(chatId);
+    const job = draft.jobId ? await getJobById(draft.jobId) : undefined;
+    if (!job) {
+      await tgSend(chatId, "That booking no longer exists.");
+      return;
+    }
+    await setAgreedPrice(job.jobId, n);
+    // Approve with the price applied so the client's invoice uses it.
+    await approveBooking({ ...job, agreedPrice: n });
+    await tgSend(
+      chatId,
+      `✅ Confirmed <b>${escapeHtml(job.client.name || job.client.email)}</b> at €${n}. They've been emailed a link to finish booking.`,
+    );
+    return;
+  }
+
   switch (state.step) {
     case "name":
       draft.name = /^skip$/i.test(text) ? undefined : text;
@@ -881,6 +911,56 @@ async function handleCallback(cb: any): Promise<void> {
   const job = jobId ? await getJobById(jobId) : undefined;
   if (!job) {
     await tgAnswerCallback(cb.id, "Job not found");
+    return;
+  }
+
+  // Confirm a gated booking. Out-of-zone bookings need an agreed price first —
+  // kick off the confirm_price wizard; post-works-only bookings confirm outright.
+  if (action === "cbook") {
+    if (job.confirmGate?.status === "approved") {
+      await tgAnswerCallback(cb.id, "Already confirmed");
+      return;
+    }
+    const needsPrice = job.confirmGate?.reasons?.includes("outside-zone");
+    if (needsPrice && chatId) {
+      await setState({
+        chatId: String(chatId),
+        flow: "confirm_price",
+        step: "price",
+        draft: { jobId },
+      });
+      await tgAnswerCallback(cb.id);
+      if (messageId && cb.message?.text) {
+        await tgEditText(chatId, messageId, `${escapeHtml(cb.message.text)}\n\n✅ <i>Confirming…</i>`);
+      }
+      await tgSend(
+        chatId,
+        `Confirming <b>${escapeHtml(job.client.name || job.client.email)}</b> (outside your zones). Enter the agreed <b>price</b> in € (overrides the €400 flat rate):`,
+      );
+      return;
+    }
+    await approveBooking(job);
+    await tgAnswerCallback(cb.id, "Confirmed");
+    if (chatId && messageId) {
+      await tgEditText(
+        chatId,
+        messageId,
+        `✅ Confirmed <b>${escapeHtml(job.client.name || job.client.email)}</b> — emailed a link to finish booking.`,
+      );
+    }
+    return;
+  }
+
+  if (action === "rbook") {
+    await rejectBooking(job);
+    await tgAnswerCallback(cb.id, "Rejected");
+    if (chatId && messageId) {
+      await tgEditText(
+        chatId,
+        messageId,
+        `🗑 Rejected booking for <b>${escapeHtml(job.client.name || job.client.email)}</b> — job discarded, client emailed.`,
+      );
+    }
     return;
   }
 

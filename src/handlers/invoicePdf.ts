@@ -5,6 +5,7 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
+import { pendingConfirmation } from "../shared/confirmation";
 import { getJobByToken } from "../shared/jobs";
 import { ensureInvoiceForJob, getInvoicePdf } from "../shared/qbInvoice";
 import { hydrateSecrets } from "../shared/secrets";
@@ -22,6 +23,10 @@ export const handler = async (
   // Solar-partner jobs: the invoice belongs to the partner — the client link
   // must not be able to read it.
   if (isSolarJob(job)) return { statusCode: 404, body: "not found" };
+  // Don't mint an invoice for a booking still awaiting the owner's confirmation.
+  if ((await pendingConfirmation(job)).length) {
+    return { statusCode: 409, body: "needs confirmation" };
+  }
 
   try {
     const inv = await ensureInvoiceForJob(job);

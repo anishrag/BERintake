@@ -28,7 +28,8 @@ export type BotFlow =
   | "client"
   | "solar"
   | "solar_arranged"
-  | "auctioneera";
+  | "auctioneera"
+  | "confirm_price"; // owner sets the agreed price when confirming an out-of-zone booking
 
 export interface BotDraft {
   name?: string;
@@ -38,6 +39,7 @@ export interface BotDraft {
   size?: string; // apt | lt200 | mt200
   datetime?: string; // YYYY-MM-DD HH:MM
   price?: number;
+  jobId?: string; // confirm_price: the gated job being confirmed
 }
 
 export interface BotState {

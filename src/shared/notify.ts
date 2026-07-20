@@ -11,7 +11,7 @@ import { clientLink } from "./jobs";
 import { ensureInvoiceForJob, getInvoicePdf } from "./qbInvoice";
 import { getSignedLoePdf } from "./signwell";
 import { isSolarJob, solarPartner } from "./solarPartner";
-import type { Job } from "./types";
+import type { ConfirmReason, Job } from "./types";
 
 // Best-effort attachment fetchers — never let a missing PDF block the email.
 async function invoiceAttachment(job: Job): Promise<Attachment | null> {
@@ -577,6 +577,84 @@ Cannygreen`;
     text,
     html,
     attachments: [{ filename: "invoice.pdf", content: pdf }],
+  });
+}
+
+// --- Owner-confirmation gate emails (see shared/confirmation.ts) -------------
+
+// The owner has confirmed a gated booking (post-works verified / out-of-zone
+// accepted) — invite the client back to finish. Their form details are saved,
+// so the link drops them straight back into the booking flow.
+export async function sendBookingConfirmedEmail(job: Job): Promise<void> {
+  const firstName = job.client.name.split(" ")[0] || "there";
+  const link = clientLink(job.token);
+
+  const text = `Hi ${firstName},
+
+Good news — we've confirmed your BER assessment${job.client.eircode ? ` at ${job.client.eircode}` : ""} and you can finish booking it now.
+
+Just open the link below to pick your time and complete the booking:
+${link}
+
+If you have any questions, simply reply to this email.
+
+Kind regards,
+Anish
+Cannygreen`;
+
+  const html = `<div style="${SHELL}">
+  <p>Hi ${escapeHtml(firstName)},</p>
+  <p><strong>Good news</strong> — we've confirmed your BER assessment${job.client.eircode ? ` at <strong>${escapeHtml(job.client.eircode)}</strong>` : ""} and you can finish booking it now.</p>
+  <p>Just open the link below to pick your time and complete the booking:</p>
+  <p style="text-align:center;margin:28px 0">
+    <a href="${link}" style="${BTN}">Finish my booking</a>
+  </p>
+  <p>If you have any questions, simply reply to this email.</p>
+  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
+</div>`;
+
+  await sendEmail({
+    to: job.client.email,
+    subject: "Cannygreen BER - Your booking is confirmed, finish here",
+    text,
+    html,
+  });
+}
+
+// The owner has rejected a gated booking. The message depends on why: an
+// out-of-zone property is a polite "too far" decline; a post-works claim we
+// can't match to a record points them to email us if they think it's a mistake.
+export async function sendBookingRejectedEmail(
+  job: Job,
+  reasons: ConfirmReason[],
+): Promise<void> {
+  const firstName = job.client.name.split(" ")[0] || "there";
+  // Distance is the definitive blocker — if it applies, lead with that.
+  const outside = reasons.includes("outside-zone");
+
+  const body = outside
+    ? "Thank you for your interest in a BER assessment with Cannygreen. Unfortunately, as your property is outside our operating area, we're not able to complete this booking. We're sorry we couldn't help on this occasion."
+    : "Thank you for booking a post-works BER with Cannygreen. Unfortunately, we can't find a pre-works BER for your property in our records, which the post-works rate relies on. If you think this is a mistake, please contact us at anish@cannygreen.com and we'll be happy to look into it.";
+
+  const text = `Hi ${firstName},
+
+${body}
+
+Kind regards,
+Anish
+Cannygreen`;
+
+  const html = `<div style="${SHELL}">
+  <p>Hi ${escapeHtml(firstName)},</p>
+  <p>${escapeHtml(body)}</p>
+  <p>Kind regards,<br><strong>Anish</strong><br>Cannygreen</p>
+</div>`;
+
+  await sendEmail({
+    to: job.client.email,
+    subject: "Cannygreen BER - About your booking request",
+    text,
+    html,
   });
 }
 

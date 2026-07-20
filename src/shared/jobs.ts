@@ -464,6 +464,21 @@ export async function addSentEmail(jobId: string, key: string): Promise<void> {
   );
 }
 
+/** Persist the owner-confirmation gate (see shared/confirmation.ts). */
+export async function setConfirmGate(
+  jobId: string,
+  gate: NonNullable<Job["confirmGate"]>,
+): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: JOBS_TABLE,
+      Key: { jobId },
+      UpdateExpression: "SET confirmGate = :g, updatedAt = :u",
+      ExpressionAttributeValues: { ":g": gate, ":u": new Date().toISOString() },
+    }),
+  );
+}
+
 /** Set a trusted, agreed price (owner via Telegram / contractor table). */
 export async function setAgreedPrice(jobId: string, price: number): Promise<void> {
   await ddb.send(

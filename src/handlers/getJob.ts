@@ -64,6 +64,11 @@ export const handler = async (
         ? { docNumber: job.invoice.docNumber, total: job.invoice.total }
         : null,
     loe: job.loe ? { status: job.loe.status } : null,
+    // Owner-confirmation gate: lets the form show the "awaiting confirmation"
+    // panel on reload, and stand down once the owner has approved.
+    confirmGate: job.confirmGate
+      ? { status: job.confirmGate.status, reasons: job.confirmGate.reasons }
+      : null,
   };
 
   return {

@@ -5,6 +5,10 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
+import {
+  pendingConfirmation,
+  requestOwnerConfirmation,
+} from "../shared/confirmation";
 import { getJobByToken, setLoe } from "../shared/jobs";
 import { allowRequest, clientIp } from "../shared/rateLimit";
 import { createLoeDocument } from "../shared/signwell";
@@ -34,6 +38,15 @@ export const handler = async (
   if (!job || job.status === "discarded") return json(404, { error: "not found" });
   if (!BOOKED_STATUSES.includes(job.status)) {
     return json(409, { error: "not-booked" });
+  }
+
+  // Defence-in-depth: a booked job can't reach here ungated (book.ts blocks
+  // first), but never create a paid SignWell document for an unconfirmed
+  // post-works / outside-zone booking.
+  const reasons = await pendingConfirmation(job);
+  if (reasons.length) {
+    await requestOwnerConfirmation(job, reasons);
+    return json(409, { error: "needs-confirmation", reasons });
   }
 
   // Reuse the existing document if one is in progress.
