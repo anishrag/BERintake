@@ -807,6 +807,28 @@ Resources:
           Type: HttpApi
           Properties: { Path: "/surveyor/jobs/{jobId}/ber/complete", Method: POST }
 
+  SurveyorRequestDetailsFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/surveyorRequestDetails.ts]
+    Properties:
+      Handler: src/handlers/surveyorRequestDetails.handler
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - Statement:
+            - Effect: Allow
+              Action: [ses:SendEmail, ses:SendRawEmail]
+              Resource: "*"
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/surveyor/jobs/{jobId}/ber/request-details", Method: POST }
+
   SurveyorBugReportCreateFn:
     Type: AWS::Serverless::Function
     Metadata:
