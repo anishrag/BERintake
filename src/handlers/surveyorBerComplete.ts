@@ -1,7 +1,7 @@
 // POST /surveyor/jobs/{jobId}/ber/complete — the tablet reports the finished
 // assessment. The heavy data_json + photos were already uploaded to S3 via the
 // presigned URLs; this records the pointer + summary and moves the job to
-// `assessed`.
+// `surveyed`.
 //
 // Body: { ratingResult?: string, summary?: object }
 
@@ -52,5 +52,5 @@ export const handler = async (
   };
   await setBerResult(jobId, ber);
 
-  return json(200, { jobId, status: "assessed", ber });
+  return json(200, { jobId, status: "surveyed", ber });
 };

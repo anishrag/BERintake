@@ -54,7 +54,7 @@ export const handler = async (
     );
   }
 
-  // First upload intent — mark it pulled (don't regress an already-assessed job).
+  // First upload intent — mark it pulled (don't regress an already-surveyed job).
   if (
     job.status === "booked" ||
     job.status === "signed" ||

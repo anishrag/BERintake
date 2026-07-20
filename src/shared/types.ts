@@ -12,7 +12,13 @@ export type JobStatus =
   | "signed" // letter of engagement e-signed
   | "confirmed" // paid + signed: ready for the assessor
   | "pulled" // synced into BER_APP on the tablet
-  | "assessed" // on-site BER completed and synced back from the tablet
+  | "surveyed" // on-site BER completed and synced back from the tablet
+  | "details_requested" // surveyed, details requested: office asked the client for the extra info/docs needed to resolve unknowns
+  | "details_provided" // surveyed, details provided: client supplied them — the state `resolve` runs on
+  | "resolved" // office `resolve` complete: unknown constructions clarified and justifying documents attached
+  | "report_generated" // DEAP report produced from the resolved survey
+  | "published" // report lodged/published to the client (and SEAI)
+  | "done" // job fully complete — nothing further to do
   | "discarded";
 
 // "tablet" = registered by the assessor's tablet for a BER created from

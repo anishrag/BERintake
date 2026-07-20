@@ -154,7 +154,7 @@ export async function setBerSeed(jobId: string, seed: BerSeed): Promise<void> {
   );
 }
 
-/** Attach the finished-assessment pointer and move the job to `assessed`. */
+/** Attach the finished-assessment pointer and move the job to `surveyed`. */
 export async function setBerResult(
   jobId: string,
   ber: BerResult,
@@ -167,7 +167,7 @@ export async function setBerResult(
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
         ":b": ber,
-        ":st": "assessed",
+        ":st": "surveyed",
         ":u": new Date().toISOString(),
       },
     }),

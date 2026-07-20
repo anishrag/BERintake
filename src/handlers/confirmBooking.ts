@@ -27,7 +27,7 @@ export const handler = async (
 
   // Idempotent, and only from a committed-but-not-yet-pulled state
   // (booked/signed). Never regress a job the tablet has already pulled or
-  // assessed, nor re-confirm one.
+  // surveyed, nor re-confirm one.
   if (job.status !== "booked" && job.status !== "signed") {
     return json(200, {
       status: job.status,

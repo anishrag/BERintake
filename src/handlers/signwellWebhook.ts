@@ -58,7 +58,7 @@ export const handler = async (
       // Reflect the signature in the top-level status too, so a signed job reads
       // as `signed` regardless of whether the client's browser ever fired the
       // confirm step. Only advance from `booked` — never regress a job that's
-      // already further along (confirmed/pulled/assessed).
+      // already further along (confirmed/pulled/surveyed).
       if (job.status === "booked") await setJobStatus(job.jobId, "signed");
       try {
         await sendAllSetEmail(job);
