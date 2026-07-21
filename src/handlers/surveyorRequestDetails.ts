@@ -30,7 +30,9 @@ const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
 });
 
 // Escape + wrap the plain-text draft into simple HTML: blank lines become
-// paragraph breaks, single newlines become <br>.
+// paragraph breaks, single newlines become <br>, and `**bold**` spans (used for
+// the numbered point headings) become <strong>. Bolding runs after escaping —
+// the `**` markers survive escaping since they contain no HTML-special chars.
 function textToHtml(text: string): string {
   const esc = (s: string) =>
     s
@@ -39,7 +41,12 @@ function textToHtml(text: string): string {
       .replace(/>/g, "&gt;");
   return text
     .split(/\n{2,}/)
-    .map((para) => `<p>${esc(para).replace(/\n/g, "<br>")}</p>`)
+    .map(
+      (para) =>
+        `<p>${esc(para)
+          .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+          .replace(/\n/g, "<br>")}</p>`,
+    )
     .join("\n");
 }
 
