@@ -163,32 +163,54 @@ function buildChecklistCard_(jobId, clientName, address, checklist, attMeta) {
   card.addSection(
     CardService.newCardSection().addWidget(
       CardService.newTextParagraph().setText(
-        '<b>Waiting on ' + outstanding.length + ' of ' + items.length + ' items</b>',
+        '<b>Waiting on ' +
+          outstanding.length +
+          ' of ' +
+          items.length +
+          ' items.</b> Attach the file(s) per point; flip the toggle to Done when a point is fully covered.',
       ),
     ),
   );
 
-  // One multi-select group per item: the email-as-PDF plus every attachment.
-  // Not mutually exclusive — a point can take several files.
-  function itemWidget_(i) {
-    var onFile = (i.attachments && i.attachments.length) || 0;
+  // One SECTION per item: a bold heading with a "Done" toggle beside it, then a
+  // smaller "Attach" group of sources (the email-as-PDF + each attachment). The
+  // toggle and the attachments are independent — attach files but leave Done off
+  // when more is still needed; flip Done when the point is fully covered.
+  function addItemSection_(i, isDone) {
+    var section = CardService.newCardSection();
+    var sw = CardService.newSwitch()
+      .setFieldName('done_' + i.item_id)
+      .setValue('true')
+      .setSelected(!!isDone)
+      .setControlType(CardService.SwitchControlType.SWITCH);
+    var head = CardService.newDecoratedText()
+      .setText('<b>' + i.label + '</b>')
+      .setWrapText(true)
+      .setSwitchControl(sw);
+    var onFile = (i.attachments || [])
+      .map(function (a) {
+        return a.filename;
+      })
+      .join(', ');
+    head.setBottomLabel(onFile ? '✓ ' + onFile : 'Done? →');
+    section.addWidget(head);
+
     var sel = CardService.newSelectionInput()
       .setType(CardService.SelectionInputType.CHECK_BOX)
       .setFieldName('sel_' + i.item_id)
-      .setTitle(i.label + (onFile ? '  (' + onFile + ' on file)' : ''));
+      .setTitle(isDone ? 'Add more' : 'Attach from this email');
     sel.addItem('✉️ This email (as PDF)', 'email', false);
     attMeta.forEach(function (a) {
       sel.addItem('📎 ' + a.name, 'att:' + a.index, false);
     });
-    return sel;
+    section.addWidget(sel);
+    card.addSection(section);
   }
 
   if (outstanding.length > 0) {
-    var out = CardService.newCardSection().setHeader('Attach what the client sent');
     outstanding.forEach(function (i) {
-      out.addWidget(itemWidget_(i));
+      addItemSection_(i, false);
     });
-    card.addSection(out);
   } else if (items.length > 0) {
     card.addSection(
       CardService.newCardSection().addWidget(
@@ -200,24 +222,16 @@ function buildChecklistCard_(jobId, clientName, address, checklist, attMeta) {
   }
 
   if (done.length > 0) {
-    var doneSection = CardService.newCardSection()
-      .setHeader('Already received (' + done.length + ') — tap to add more')
-      .setCollapsible(true)
-      .setNumUncollapsibleWidgets(0);
+    card.addSection(
+      CardService.newCardSection().addWidget(
+        CardService.newTextParagraph().setText(
+          '<b>Already received (' + done.length + ')</b> — toggle off to reopen, or add files:',
+        ),
+      ),
+    );
     done.forEach(function (i) {
-      var files = (i.attachments || [])
-        .map(function (a) {
-          return a.filename;
-        })
-        .join(', ');
-      doneSection.addWidget(
-        CardService.newDecoratedText()
-          .setText('<font color="#2e7d32">✓ ' + i.label + '</font>')
-          .setBottomLabel(files || 'no file'),
-      );
-      doneSection.addWidget(itemWidget_(i));
+      addItemSection_(i, true);
     });
-    card.addSection(doneSection);
   }
 
   var labels = {};
@@ -243,9 +257,10 @@ function buildChecklistCard_(jobId, clientName, address, checklist, attMeta) {
 }
 
 /**
- * Save action: for every selected source (email-PDF or an attachment) build a
- * blob, upload it to S3 via a presigned PUT, then record it on its item + mark
- * done. Re-renders from authoritative state.
+ * Save action. For each item: upload any selected sources (email-PDF /
+ * attachments) to S3, and set the item's done state from its toggle — the two
+ * are independent (attach files but leave Done off when more is still needed).
+ * Re-renders from authoritative state.
  */
 function saveTicks_(e) {
   var p = e.parameters || {};
@@ -259,12 +274,11 @@ function saveTicks_(e) {
   var prefix = shortName_(p.address || p.clientName || 'BER');
   var used = {};
 
+  // Gather selected source files per item.
   var files = []; // {item_id, filename, contentType, blob}
-  Object.keys(inputs).forEach(function (field) {
-    if (field.indexOf('sel_') !== 0) return;
-    var itemId = field.substring(4);
-    var label = labels[itemId] || itemId;
-    (inputs[field] || []).forEach(function (val) {
+  Object.keys(labels).forEach(function (itemId) {
+    var label = labels[itemId];
+    (inputs['sel_' + itemId] || []).forEach(function (val) {
       var blob, ct, ext, src;
       if (val === 'email') {
         if (!message) return;
@@ -287,36 +301,41 @@ function saveTicks_(e) {
     });
   });
 
-  if (files.length === 0) return notify_('Nothing selected to attach');
-
   try {
-    var presign = postJson_('/jobs/' + encodeURIComponent(p.jobId) + '/checklist/presign', {
-      files: files.map(function (f) {
-        return { item_id: f.item_id, filename: f.filename, contentType: f.contentType };
-      }),
-    });
+    // Upload selected files (if any) and collect per-item attachment records.
     var byItem = {};
-    (presign.uploads || []).forEach(function (u) {
-      var f = files.filter(function (x) {
-        return x.item_id === u.item_id && x.filename === u.filename;
-      })[0];
-      if (!f) return;
-      var put = UrlFetchApp.fetch(u.url, {
-        method: 'put',
-        contentType: u.contentType,
-        payload: f.blob.getBytes(),
-        muteHttpExceptions: true,
+    if (files.length > 0) {
+      var presign = postJson_('/jobs/' + encodeURIComponent(p.jobId) + '/checklist/presign', {
+        files: files.map(function (f) {
+          return { item_id: f.item_id, filename: f.filename, contentType: f.contentType };
+        }),
       });
-      if (put.getResponseCode() >= 300) throw new Error('upload failed (' + put.getResponseCode() + ')');
-      (byItem[u.item_id] = byItem[u.item_id] || []).push({
-        key: u.key,
-        filename: u.filename,
-        contentType: u.contentType,
+      (presign.uploads || []).forEach(function (u) {
+        var f = files.filter(function (x) {
+          return x.item_id === u.item_id && x.filename === u.filename;
+        })[0];
+        if (!f) return;
+        var put = UrlFetchApp.fetch(u.url, {
+          method: 'put',
+          contentType: u.contentType,
+          payload: f.blob.getBytes(),
+          muteHttpExceptions: true,
+        });
+        if (put.getResponseCode() >= 300)
+          throw new Error('upload failed (' + put.getResponseCode() + ')');
+        (byItem[u.item_id] = byItem[u.item_id] || []).push({
+          key: u.key,
+          filename: u.filename,
+          contentType: u.contentType,
+        });
       });
-    });
+    }
 
-    var updates = Object.keys(byItem).map(function (id) {
-      return { item_id: id, done: true, attachments: byItem[id] };
+    // Sync every item's done state from its toggle, appending new files.
+    var updates = Object.keys(labels).map(function (itemId) {
+      var v = inputs['done_' + itemId];
+      var done = !!(v && v.length);
+      return { item_id: itemId, done: done, attachments: byItem[itemId] || [] };
     });
     var resp = postChecklist_(p.jobId, updates);
     var card = buildChecklistCard_(
@@ -326,15 +345,15 @@ function saveTicks_(e) {
       resp.checklist,
       metaFrom_(attachments),
     );
+    var msg =
+      resp.status === 'details_provided'
+        ? 'Saved — all done, details provided'
+        : files.length
+          ? 'Uploaded ' + files.length + ' file(s)'
+          : 'Saved';
     return CardService.newActionResponseBuilder()
       .setNavigation(CardService.newNavigation().updateCard(card))
-      .setNotification(
-        CardService.newNotification().setText(
-          resp.status === 'details_provided'
-            ? 'Uploaded — all done, details provided'
-            : 'Uploaded ' + files.length + ' file(s)',
-        ),
-      )
+      .setNotification(CardService.newNotification().setText(msg))
       .build();
   } catch (err) {
     return notify_('Save failed: ' + err);
