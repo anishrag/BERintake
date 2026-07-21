@@ -19,6 +19,7 @@ import type {
   BerSeed,
   ClientDetails,
   DetailsChecklist,
+  DetailsChecklistAttachment,
   DetailsChecklistItem,
   Job,
   JobSource,
@@ -215,15 +216,26 @@ export async function setDetailsChecklist(
  */
 export async function applyChecklistUpdates(
   job: Job,
-  updates: { itemId: string; done: boolean }[],
+  updates: {
+    itemId: string;
+    done: boolean;
+    attachments?: DetailsChecklistAttachment[];
+  }[],
 ): Promise<DetailsChecklist | undefined> {
   const checklist = job.detailsChecklist;
   if (!checklist) return undefined;
 
-  const byId = new Map(updates.map((u) => [u.itemId, u.done]));
-  const items: DetailsChecklistItem[] = checklist.items.map((it) =>
-    byId.has(it.itemId) ? { ...it, done: byId.get(it.itemId)! } : it,
-  );
+  const byId = new Map(updates.map((u) => [u.itemId, u]));
+  const items: DetailsChecklistItem[] = checklist.items.map((it) => {
+    const u = byId.get(it.itemId);
+    if (!u) return it;
+    // Append new attachments, de-duped by S3 key (idempotent re-saves).
+    const merged = [...(it.attachments ?? [])];
+    for (const a of u.attachments ?? []) {
+      if (!merged.some((m) => m.key === a.key)) merged.push(a);
+    }
+    return { ...it, done: u.done, attachments: merged };
+  });
   const now = new Date().toISOString();
   const updated: DetailsChecklist = {
     ...checklist,

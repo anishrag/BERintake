@@ -28,6 +28,10 @@ function checklistOut(checklist: DetailsChecklist) {
       item_id: i.itemId,
       label: i.label,
       done: i.done,
+      attachments: (i.attachments ?? []).map((a) => ({
+        filename: a.filename,
+        key: a.key,
+      })),
     })),
   };
 }
@@ -41,20 +45,48 @@ export const handler = async (
   const jobId = event.pathParameters?.jobId;
   if (!jobId) return json(400, { error: "missing jobId" });
 
-  let parsed: { updates?: { item_id?: unknown; done?: unknown }[] };
+  let parsed: {
+    updates?: {
+      item_id?: unknown;
+      done?: unknown;
+      attachments?: {
+        key?: unknown;
+        filename?: unknown;
+        contentType?: unknown;
+      }[];
+    }[];
+  };
   try {
     parsed = event.body ? JSON.parse(event.body) : {};
   } catch {
     return json(400, { error: "invalid JSON" });
   }
 
+  const now = new Date().toISOString();
   const updates = Array.isArray(parsed.updates)
     ? parsed.updates
         .filter(
-          (u): u is { item_id: string; done: boolean } =>
+          (u): u is { item_id: string; done: boolean; attachments?: any[] } =>
             !!u && typeof u.item_id === "string" && typeof u.done === "boolean",
         )
-        .map((u) => ({ itemId: u.item_id, done: u.done }))
+        .map((u) => ({
+          itemId: u.item_id,
+          done: u.done,
+          attachments: (Array.isArray(u.attachments) ? u.attachments : [])
+            .filter(
+              (a): a is { key: string; filename: string; contentType?: string } =>
+                !!a && typeof a.key === "string" && typeof a.filename === "string",
+            )
+            .map((a) => ({
+              key: a.key,
+              filename: a.filename,
+              contentType:
+                typeof a.contentType === "string"
+                  ? a.contentType
+                  : "application/octet-stream",
+              uploadedAt: now,
+            })),
+        }))
     : [];
   if (updates.length === 0)
     return json(400, { error: "no valid updates" });

@@ -143,10 +143,20 @@ export interface Job {
   updatedAt: string; // ISO 8601
 }
 
+export interface DetailsChecklistAttachment {
+  key: string; // S3 key under the job prefix: bers/{jobId}/details/{itemId}/{name}
+  filename: string;
+  contentType: string;
+  uploadedAt: string; // ISO 8601
+}
+
 export interface DetailsChecklistItem {
   itemId: string;
   label: string;
   done: boolean;
+  // Client-supplied files associated with this item (uploaded from the Gmail
+  // add-on). Their S3 keys; later wired to the relevant Ber-struct point.
+  attachments?: DetailsChecklistAttachment[];
 }
 
 export interface DetailsChecklist {

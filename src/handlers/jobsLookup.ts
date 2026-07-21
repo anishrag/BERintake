@@ -48,6 +48,10 @@ function checklistOut(checklist: DetailsChecklist | undefined) {
       item_id: i.itemId,
       label: i.label,
       done: i.done,
+      attachments: (i.attachments ?? []).map((a) => ({
+        filename: a.filename,
+        key: a.key,
+      })),
     })),
   };
 }

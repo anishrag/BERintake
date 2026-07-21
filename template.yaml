@@ -866,6 +866,25 @@ Resources:
           Type: HttpApi
           Properties: { Path: "/jobs/{jobId}/checklist", Method: POST }
 
+  JobsChecklistPresignFn:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2022
+        EntryPoints: [src/handlers/jobsChecklistPresign.ts]
+    Properties:
+      Handler: src/handlers/jobsChecklistPresign.handler
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: ber-intake/*
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - S3CrudPolicy: { BucketName: !Ref BerArtifactsBucket }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { Path: "/jobs/{jobId}/checklist/presign", Method: POST }
+
   SurveyorBugReportCreateFn:
     Type: AWS::Serverless::Function
     Metadata:
