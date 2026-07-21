@@ -27,15 +27,22 @@ Follow-ups tab — the ticked requests become the checklist, all unticked.
 
 You need Node + [`clasp`](https://github.com/google/clasp) (`npm i -g @google/clasp`).
 
+> Commands below are for **clasp 3.x** (`clasp --version`). `clasp create` and
+> `clasp open` were renamed (`create-script`/`open-script`); the short aliases
+> `create`/`push`/`pull` still work.
+
 1. **Log in:** `clasp login`
 2. **Create the script project** (from this folder):
    ```
    cd gmail-addon
-   clasp create --type standalone --title "BER Checklist" --rootDir .
+   clasp create-script --type standalone --title "BER Checklist"
    ```
-   This writes a `.clasp.json` (holds the new `scriptId`) — it's gitignored, keep it local.
-3. **Push the code:** `clasp push -f`
-4. **Set the secret:** open the project (`clasp open`), then
+   This writes a `.clasp.json` (holds the new `scriptId`) — gitignored, keep it local.
+   ⚠️ **`create` overwrites `appsscript.json` with a bare default** (no add-on
+   config). Restore this repo's `appsscript.json` (it has the `addOns` block +
+   scopes) before pushing — `git checkout appsscript.json`.
+3. **Push the code:** `clasp push -f` (uploads `Code.gs` + the restored manifest)
+4. **Set the secret:** open the IDE (`clasp open-script`), then
    **Project Settings ▸ Script Properties ▸ Add script property**:
    - `ADDON_KEY` = the value of `ADDON_ACCESS_KEY` from `BERintake/secrets/addon.env`
    - *(optional)* `API_BASE` = override the API URL (defaults to the prod HTTP API).

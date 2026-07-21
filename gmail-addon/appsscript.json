@@ -1,5 +1,6 @@
 {
   "timeZone": "Europe/Dublin",
+  "dependencies": {},
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8",
   "oauthScopes": [
